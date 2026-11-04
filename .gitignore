@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+*.log
+.DS_Store
+.vscode/
+.idea/
+# Personal data must never be committed
+samples/*.xlsx
+samples/*.csv
+samples/*.ofx
+!samples/README.md
