@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { fromCents, toCents } from '@/lib/money'
 import { useApp } from '@/app/AppContext'
+import { formatDate } from '@/lib/dates'
+import { monthLong } from '@/lib/format'
 
-export function Page({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+export function Page({ title, actions, back, children }: { title: string; actions?: ReactNode; back?: { label: string; onClick: () => void }; children: ReactNode }) {
   return (
     <>
+      {back && <button className="link small" style={{ marginTop: 6 }} onClick={back.onClick}>‹ {back.label}</button>}
       <div className="row between wrap"><h1>{title}</h1><div className="row">{actions}</div></div>
       {children}
     </>
@@ -13,9 +16,9 @@ export function Page({ title, actions, children }: { title: string; actions?: Re
 
 export const Empty = ({ children }: { children: ReactNode }) => <div className="card empty">{children}</div>
 
-export function Progress({ fraction, over, calm }: { fraction: number; over?: boolean; calm?: boolean }) {
+export function Progress({ fraction, over, calm, thick }: { fraction: number; over?: boolean; calm?: boolean; thick?: boolean }) {
   const pct = Math.max(0, Math.min(1, fraction)) * 100
-  return <div className={`bar${over ? ' over' : fraction > 0.85 && !calm ? ' warn' : ''}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></div>
+  return <div className={`bar${thick ? ' thick' : ''}${over ? ' over' : fraction > 0.85 && !calm ? ' warn' : ''}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></div>
 }
 
 /** Number input that edits whole currency units but reports integer cents. */
@@ -57,16 +60,31 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
 
 export function CycleSwitcher() {
   const { cycle, moveCycle, goCurrent, isCurrentCycle, settings } = useApp()
-  const label = new Intl.DateTimeFormat(settings.locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(cycle.year, cycle.month - 1, 1)))
   return (
-    <div className="row between" style={{ marginBottom: 12 }}>
-      <button onClick={() => moveCycle(-1)} aria-label="Previous period">‹</button>
+    <div className="row between" style={{ marginBottom: 10 }}>
+      <button className="ghost" onClick={() => moveCycle(-1)} aria-label="Previous period">‹</button>
       <div style={{ textAlign: 'center' }}>
-        <b>{label}</b>
-        <div className="small muted">{cycle.start} → {cycle.end}</div>
-        {!isCurrentCycle && <button className="ghost small" onClick={goCurrent}>Back to current</button>}
+        <b>{monthLong(cycle.year, cycle.month, settings.locale)}</b>
+        <div className="xs muted">{formatDate(cycle.start, settings.locale)} – {formatDate(cycle.end, settings.locale)}</div>
+        {!isCurrentCycle && <button className="link xs" onClick={goCurrent}>Back to current</button>}
       </div>
-      <button onClick={() => moveCycle(1)} aria-label="Next period">›</button>
+      <button className="ghost" onClick={() => moveCycle(1)} aria-label="Next period">›</button>
+    </div>
+  )
+}
+
+/** A row of single-choice chips (radio behaviour). */
+export function Chips<T extends string | number>({ value, options, onChange, label, caption }: {
+  value: T; options: { value: T; label: string; disabled?: boolean }[]; onChange: (v: T) => void; label: string; caption?: boolean
+}) {
+  return (
+    <div>
+      {caption && <div className="xs muted" style={{ margin: '6px 0 0' }}>{label}</div>}
+      <div className="chips" role="group" aria-label={label}>
+        {options.map((o) => (
+          <button key={String(o.value)} className="chip" aria-pressed={value === o.value} disabled={o.disabled} onClick={() => onChange(o.value)}>{o.label}</button>
+        ))}
+      </div>
     </div>
   )
 }

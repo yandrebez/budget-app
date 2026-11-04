@@ -26,8 +26,11 @@ describe('parseWorkbook', () => {
   })
   it('reads transactions, skipping bad rows and flagging unknown categories', async () => {
     const p = await load()
-    expect(p.transactions).toHaveLength(5)
+    expect(p.transactions).toHaveLength(6)
     expect(p.transactions[2]).toEqual({ date: '2026-10-25', account: 'Main', category: 'Groceries', description: 'Corner shop', moneyIn: 0, moneyOut: 25050 })
+    // A negative "Money out" is a refund (the sheet's own maths is in minus out), not an expense.
+    expect(p.transactions[5]).toMatchObject({ description: 'Refund as negative out', moneyIn: 2000, moneyOut: 0 })
+    expect(p.openingBalance).toBe(5000)
     expect(p.accounts.sort()).toEqual(['Main', 'Savings acc'])
     expect(p.warnings.join(' ')).toMatch(/1 transaction row/)
     expect(p.categories.find((c) => c.name === 'Mystery')?.group).toBe('Imported')
@@ -57,7 +60,7 @@ describe('applyPlan', () => {
 
   it('populates the app, reusing matching default groups', async () => {
     const r = await applyPlan(await load(), { include: all, mode: 'merge' })
-    expect(r).toMatchObject({ transactions: 5, debts: 2, pots: 2, skippedDuplicates: 0 })
+    expect(r).toMatchObject({ transactions: 6, debts: 2, pots: 2, skippedDuplicates: 0 })
     expect((await db.groups.filter((g) => g.name === 'Income').count())).toBe(1) // not duplicated
     const loan = await db.categories.filter((c) => c.name === 'Loan A').first()
     expect((await db.debts.toArray()).find((d) => d.name === 'Loan A')?.categoryId).toBe(loan!.id)
@@ -71,9 +74,15 @@ describe('applyPlan', () => {
     const cats = await db.categories.count()
     const again = await applyPlan(plan, { include: all, mode: 'merge' })
     expect(again.transactions).toBe(0)
-    expect(again.skippedDuplicates).toBe(5)
+    expect(again.skippedDuplicates).toBe(6)
     expect(await db.categories.count()).toBe(cats)
-    expect(await db.transactions.count()).toBe(5)
+    expect(await db.transactions.count()).toBe(6)
+  })
+
+  it('puts the opening balance on the chosen account', async () => {
+    await applyPlan(await load(), { include: all, mode: 'merge', openingAccount: 'Savings acc' })
+    expect((await db.accounts.filter((a) => a.name === 'Savings acc').first())?.openingBalance).toBe(5000)
+    expect((await db.accounts.filter((a) => a.name === 'Main').first())?.openingBalance).toBe(0)
   })
 
   it('respects unticked sections and fresh mode', async () => {

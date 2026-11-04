@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import type { GroupKind } from '@/types'
 import { useApp } from '@/app/AppContext'
-import { Empty, MoneyInput, Page } from '@/components/ui'
+import { BudgetRow, GroupBlock, isActive } from '@/components/BudgetViews'
+import { CycleSwitcher, Empty, MoneyInput, Page } from '@/components/ui'
 import { db } from '@/db/db'
 import { summarise } from '@/domain/budget/summary'
-import { useCategories, useGroups, useTransactions } from '@/hooks/useBudgetData'
+import { useLedger } from '@/hooks/useLedger'
 import { newId } from '@/lib/id'
 
 const KINDS: { value: GroupKind; label: string }[] = [
@@ -14,11 +15,13 @@ const KINDS: { value: GroupKind; label: string }[] = [
 
 export function Budget() {
   const { fmt, cycle } = useApp()
-  const groups = useGroups(), categories = useCategories(), txs = useTransactions()
+  const ledger = useLedger()
+  const [editing, setEditing] = useState(false)
   const [newCat, setNewCat] = useState<Record<string, string>>({})
   const [newGroup, setNewGroup] = useState({ name: '', kind: 'expense' as GroupKind })
-  const s = useMemo(() => (groups && categories && txs ? summarise(categories, groups, txs, cycle.start, cycle.end) : null), [groups, categories, txs, cycle])
-  if (!groups || !categories || !s) return null
+  const s = useMemo(() => (ledger ? summarise(ledger.categories, ledger.groups, ledger.txs, cycle.start, cycle.end) : null), [ledger, cycle])
+  if (!ledger || !s) return null
+  const { groups, categories } = ledger
 
   const addCategory = async (groupId: string) => {
     const name = (newCat[groupId] ?? '').trim()
@@ -39,44 +42,66 @@ export function Budget() {
     await db.groups.delete(id)
   }
 
+  const allocation = (
+    <div className={`card row between ${s.leftToAllocate === 0 ? '' : 'banner'}`} style={{ marginBottom: 14 }}>
+      <div><b>Left to allocate</b><div className="xs muted">Planned income minus everything given a job</div></div>
+      <b className={`num ${s.leftToAllocate === 0 ? 'good' : s.leftToAllocate < 0 ? 'bad' : 'warn'}`}>{fmt(s.leftToAllocate)}</b>
+    </div>
+  )
+
   return (
-    <Page title="Budget">
-      <div className={`card row between ${s.leftToAllocate === 0 ? '' : 'banner'}`}>
-        <div><b>Left to allocate</b><div className="small muted">Planned income minus everything given a job</div></div>
-        <b className={`num ${s.leftToAllocate === 0 ? 'good' : s.leftToAllocate < 0 ? 'bad' : 'warn'}`}>{fmt(s.leftToAllocate)}</b>
-      </div>
-      <p className="small muted">One monthly budget; the same numbers apply to every period until you change them.</p>
-      {groups.map((g) => {
-        const cats = categories.filter((c) => c.groupId === g.id).sort((a, b) => a.name.localeCompare(b.name))
-        const budgeted = g.kind !== 'transfer'
-        return (
-          <section key={g.id}>
-            <div className="row between"><h2>{g.name} <span className="pill">{KINDS.find((k) => k.value === g.kind)?.label}</span></h2>
-              <button className="ghost danger small" onClick={() => removeGroup(g.id)} aria-label={`Delete group ${g.name}`}>Delete group</button></div>
-            <div className="card">
-              {cats.length === 0 && <p className="muted small" style={{ margin: 0 }}>No categories yet.</p>}
-              {cats.map((c) => (
-                <div className="line row" key={c.id}>
-                  <input className="grow" aria-label="Category name" defaultValue={c.name} onBlur={(e) => e.target.value.trim() && db.categories.update(c.id, { name: e.target.value.trim() })} />
-                  {budgeted && <div style={{ width: 120 }}><MoneyInput label={`Monthly budget for ${c.name}`} value={c.monthlyBudget} onChange={(monthlyBudget) => db.categories.update(c.id, { monthlyBudget })} /></div>}
-                  <button className="ghost danger" aria-label={`Delete ${c.name}`} onClick={() => removeCategory(c.id)}>✕</button>
+    <Page title="Budget" actions={<button className={editing ? 'primary' : ''} onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit budget'}</button>}>
+      {!editing && <CycleSwitcher />}
+      {allocation}
+
+      {!editing ? (
+        s.lines.length === 0
+          ? <Empty><p>No categories yet.</p><button className="primary" onClick={() => setEditing(true)}>Add categories</button></Empty>
+          : groups.map((g) => {
+              const lines = s.lines.filter((l) => l.group.id === g.id && isActive(l))
+              return lines.length ? (
+                <GroupBlock key={g.id} name={g.name} kind={g.kind} lines={lines}>
+                  {lines.map((l) => <BudgetRow key={l.category.id} line={l} />)}
+                </GroupBlock>
+              ) : null
+            })
+      ) : (
+        <>
+          <p className="small muted">One monthly budget; the same numbers apply to every period until you change them.</p>
+          {groups.map((g) => {
+            const cats = categories.filter((c) => c.groupId === g.id).sort((a, b) => a.name.localeCompare(b.name))
+            const budgeted = g.kind !== 'transfer'
+            return (
+              <section key={g.id}>
+                <div className="section-head">
+                  <h2>{g.name} · {KINDS.find((k) => k.value === g.kind)?.label}</h2>
+                  <button className="link xs bad" onClick={() => removeGroup(g.id)} aria-label={`Delete group ${g.name}`}>Delete group</button>
                 </div>
-              ))}
-              <div className="row" style={{ marginTop: 8 }}>
-                <input className="grow" placeholder="New category" value={newCat[g.id] ?? ''} onChange={(e) => setNewCat({ ...newCat, [g.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && addCategory(g.id)} />
-                <button onClick={() => addCategory(g.id)}>Add</button>
-              </div>
-            </div>
-          </section>
-        )
-      })}
-      <h2>Add a group</h2>
-      <div className="card row wrap">
-        <input className="grow" placeholder="Group name" value={newGroup.name} onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })} />
-        <select style={{ width: 'auto' }} value={newGroup.kind} onChange={(e) => setNewGroup({ ...newGroup, kind: e.target.value as GroupKind })}>{KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</select>
-        <button onClick={async () => { if (!newGroup.name.trim()) return; await db.groups.add({ id: newId(), name: newGroup.name.trim(), kind: newGroup.kind, order: groups.length }); setNewGroup({ ...newGroup, name: '' }) }}>Add</button>
-      </div>
-      {categories.length === 0 && <Empty>Add categories above, then give each a monthly amount.</Empty>}
+                <div className="card">
+                  {cats.length === 0 && <p className="muted small" style={{ margin: 0 }}>No categories yet.</p>}
+                  {cats.map((c) => (
+                    <div className="row" key={c.id} style={{ marginBottom: 8 }}>
+                      <input className="grow" aria-label="Category name" defaultValue={c.name} onBlur={(e) => e.target.value.trim() && db.categories.update(c.id, { name: e.target.value.trim() })} />
+                      {budgeted && <div style={{ width: 120 }}><MoneyInput label={`Monthly budget for ${c.name}`} value={c.monthlyBudget} onChange={(monthlyBudget) => db.categories.update(c.id, { monthlyBudget })} /></div>}
+                      <button className="ghost danger" aria-label={`Delete ${c.name}`} onClick={() => removeCategory(c.id)}>✕</button>
+                    </div>
+                  ))}
+                  <div className="row" style={{ marginTop: 6 }}>
+                    <input className="grow" placeholder="New category" value={newCat[g.id] ?? ''} onChange={(e) => setNewCat({ ...newCat, [g.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && addCategory(g.id)} />
+                    <button onClick={() => addCategory(g.id)}>Add</button>
+                  </div>
+                </div>
+              </section>
+            )
+          })}
+          <h2>Add a group</h2>
+          <div className="card row wrap">
+            <input className="grow" placeholder="Group name" value={newGroup.name} onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })} />
+            <select style={{ width: 'auto' }} value={newGroup.kind} onChange={(e) => setNewGroup({ ...newGroup, kind: e.target.value as GroupKind })}>{KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</select>
+            <button onClick={async () => { if (!newGroup.name.trim()) return; await db.groups.add({ id: newId(), name: newGroup.name.trim(), kind: newGroup.kind, order: groups.length }); setNewGroup({ ...newGroup, name: '' }) }}>Add</button>
+          </div>
+        </>
+      )}
     </Page>
   )
 }

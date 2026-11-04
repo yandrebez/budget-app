@@ -3,9 +3,13 @@ export type ISODate = string
 
 export type GroupKind = 'income' | 'expense' | 'debt' | 'savings' | 'transfer'
 
+export type AccountKind = 'account' | 'card' | 'savings' | 'cash'
+
 export interface Account {
   id: string
   name: string
+  /** Display only. Balance maths is the same for every kind (a card going negative means money owed). */
+  kind?: AccountKind
   openingBalance: number
 }
 

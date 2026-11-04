@@ -20,10 +20,10 @@ UI (features/, components/)  →  hooks/  →  domain/ (pure calculations)
 | `public/`               | Static assets, PWA icons, `robots`/favicon |
 | `src/app/`              | App shell: router, providers, layout, service-worker registration |
 | `src/db/`               | IndexedDB schema, migrations, repositories, export/import of backups |
-| `src/domain/`           | Pure logic: cycles, budget maths, debt payoff, savings progress, categorisation rules |
+| `src/domain/`           | Pure logic: cycles, budget maths, balances, statistics, debt payoff, savings progress, categorisation rules |
 | `src/features/`         | One folder per screen/feature (see mapping doc) |
 | `src/features/import/parsers/` | One parser per format: CSV (with column mapping), OFX/QIF, XLSX (this workbook) |
-| `src/components/`       | Shared, presentational UI components |
+| `src/components/`       | Shared UI: budget rows, balance bar. `charts/` holds dependency-free SVG charts (columns, stacked, line, ranked bars) using the validated colour palette |
 | `src/hooks/`            | Shared React hooks |
 | `src/lib/`              | Generic helpers (dates, money formatting, ids) |
 | `src/styles/`           | Global styles, design tokens, themes |

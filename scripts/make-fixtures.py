@@ -29,7 +29,7 @@ ws = wb.create_sheet("Transactions")
 ws.append(["Date", "Account", "Category", "Description", "Money in", "Money out", "Group"])
 for row in [(D(2026, 10, 23), "Main", "Pay", "Salary", 10000, 0), (D(2026, 10, 24), "Main", "Rent", "October rent", 0, 4000),
             (D(2026, 10, 25), "Main", "Groceries", "Corner shop", 0, 250.5), (D(2026, 10, 26), "Savings acc", "Move money", "Transfer in", 500, 0),
-            (D(2026, 10, 27), "Main", "Mystery", "Unknown category", 0, 20), (None, "Main", "Pay", "Bad date", 5, 0)]:
+            (D(2026, 10, 27), "Main", "Mystery", "Unknown category", 0, 20), (D(2026, 10, 28), "Main", "Groceries", "Refund as negative out", 0, -20), (None, "Main", "Pay", "Bad date", 5, 0)]:
     ws.append(row)
 ws = wb.create_sheet("Debt")
 ws.append(["Debt"]); ws.append(["note"]); ws.append([])

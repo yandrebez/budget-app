@@ -7,7 +7,7 @@ import { potProgress } from '@/domain/savings/progress'
 import { useCategories, useGroups, usePots } from '@/hooks/useBudgetData'
 import { newId } from '@/lib/id'
 
-export function Savings() {
+export function Savings({ back }: { back?: { label: string; onClick: () => void } }) {
   const { fmt } = useApp()
   const pots = usePots(), categories = useCategories(), groups = useGroups()
   const [name, setName] = useState('')
@@ -15,7 +15,7 @@ export function Savings() {
   const monthly = (catId: string | null) => categories.find((c) => c.id === catId)?.monthlyBudget ?? 0
 
   return (
-    <Page title="Savings">
+    <Page title="Savings" back={back}>
       <div className="card row between"><b>Total saved</b><b className="num good">{fmt(pots.reduce((s, p) => s + p.balance, 0))}</b></div>
       {pots.length === 0 && <Empty>No savings pots yet.</Empty>}
       {pots.map((p) => {

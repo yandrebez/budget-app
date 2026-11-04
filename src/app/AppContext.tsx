@@ -8,6 +8,8 @@ interface AppCtx {
   settings: Settings
   /** Formats cents using the user's currency and locale. */
   fmt: (cents: number) => string
+  /** Same, without cents. For tables where width is tight. */
+  fmtWhole: (cents: number) => string
   /** The cycle currently being viewed. */
   cycle: Cycle
   isCurrentCycle: boolean
@@ -24,6 +26,7 @@ export function AppProvider({ settings, children }: { settings: Settings; childr
     return {
       settings,
       fmt: (c) => formatMoney(c, settings.currency, settings.locale),
+      fmtWhole: (c) => new Intl.NumberFormat(settings.locale, { style: 'currency', currency: settings.currency, maximumFractionDigits: 0 }).format(c / 100),
       cycle: shiftCycle(settings, current, offset),
       isCurrentCycle: offset === 0,
       moveCycle: (by) => setOffset((o) => o + by),
