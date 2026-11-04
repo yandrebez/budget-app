@@ -9,12 +9,13 @@ Log transactions or import bank statements, and the dashboard, budget, debt and 
 - **Blank by default** – no categories, accounts or sample data; you build your own budget.
 - **Custom budget period** – start day (e.g. pay day), optional move to previous/next working day, public-holiday calendar (South African preset included).
 - **Budget** – groups (income / expense / debt / savings / transfer) and categories with a monthly amount, plus "left to allocate".
-- **Dashboard** – period switcher, spent vs budget, pace check, over-budget and uncategorised warnings.
-- **Transactions** – add / edit / search; remembers description → category for next time.
+- **Balance bar** – always at the top: this month's running balance and your overall balance, with a per-account breakdown on tap.
+- **Home** – left to spend, pace check, what needs attention, and every category with how much is used and left.
+- **Activity** – transactions kept separate per account or card (with each account's balance), grouped by day; add / edit / search; remembers description → category.
 - **Statement import** – CSV or PDF from Discovery Bank, FNB, Capitec or any bank: preamble skipping, column mapping (remembered per layout), duplicate detection, per-row categorising. PDFs are read on-device (password-protected ones supported); scanned/image PDFs are not.
 - **Excel budget import** – upload an existing `.xlsx` tracker (Budget, Setup, Transactions, Debt, Savings and Cycles sheets are found by name and column headings). Preview first, tick what to import, safe to repeat without duplicates.
 - **Debt & Savings** – balances, interest/target, payoff and time-to-goal estimates driven by your budget.
-- **History** – 12-period income vs spend.
+- **Stats** – a monthly summary (spent, in, saved, left over, where it went) plus a chart builder: columns, stacked, line or ranked bars; choose what to show, how to break it down, the range and account/category filters; every chart has a table view.
 - **Backup / restore** as JSON; installable and fully offline.
 
 > Bank layouts (CSV and PDF) are detected best-effort. Please test with a real statement from each bank and report any that need a tweak.
@@ -46,10 +47,10 @@ budget-app/
 ├── src/
 │   ├── app/              App shell, routing, providers
 │   ├── db/               IndexedDB schema and repositories
-│   ├── domain/           Pure budget/cycle/debt/savings logic
-│   ├── features/         dashboard · transactions · budget · weekly · debt
-│   │                     savings · history · import · settings · onboarding
-│   ├── components/       Shared UI components
+│   ├── domain/           Pure budget/cycle/balance/stats/debt/savings logic
+│   ├── features/         dashboard · transactions · budget · stats · more · debt
+│   │                     savings · import · settings · onboarding
+│   ├── components/       Shared UI (budget rows, balance bar) + charts/ (SVG, no libraries)
 │   ├── hooks/  lib/  styles/  types/
 │   └── main.tsx
 └── tests/                unit tests and anonymised fixtures
@@ -69,7 +70,7 @@ npm run preview    # serve the production build locally
 1. ✅ Foundation – scaffold, PWA shell, DB, settings
 2. ✅ Core – transactions, budget, dashboard
 3. ◑ Import – CSV done; OFX / XLSX and PDF still to do
-4. ◑ Tracking – debt, savings, history done; dedicated weekly review still to do
+4. ◑ Tracking – debt, savings, balances and stats done; dedicated weekly review still to do
 5. ☐ Polish – transfers between accounts and balances, edit/split transactions in bulk, recurring items, charts, i18n
 
 ## Privacy

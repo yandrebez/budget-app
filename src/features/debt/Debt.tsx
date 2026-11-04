@@ -7,7 +7,7 @@ import { payoff } from '@/domain/debt/payoff'
 import { useCategories, useDebts, useGroups } from '@/hooks/useBudgetData'
 import { newId } from '@/lib/id'
 
-export function Debt() {
+export function Debt({ back }: { back?: { label: string; onClick: () => void } }) {
   const { fmt } = useApp()
   const debts = useDebts(), categories = useCategories(), groups = useGroups()
   const [name, setName] = useState('')
@@ -16,7 +16,7 @@ export function Debt() {
   const total = debts.reduce((s, d) => s + d.balance, 0)
 
   return (
-    <Page title="Debt">
+    <Page title="Debt" back={back}>
       <div className="card row between"><b>Total owed</b><b className="num">{fmt(total)}</b></div>
       <p className="small muted">Update each balance when your statement arrives. The monthly payment comes from the budget category you link.</p>
       {debts.length === 0 && <Empty>No debts tracked.</Empty>}

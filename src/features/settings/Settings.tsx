@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import type { BackupFile, WeekendRule } from '@/types'
+import type { AccountKind, BackupFile, WeekendRule } from '@/types'
 import { useApp } from '@/app/AppContext'
 import { MoneyInput, Page } from '@/components/ui'
 import { db } from '@/db/db'
@@ -8,7 +8,7 @@ import { southAfricanHolidays } from '@/domain/cycles/holidays'
 import { useAccounts } from '@/hooks/useBudgetData'
 import { newId } from '@/lib/id'
 
-export function Settings() {
+export function Settings({ back }: { back?: { label: string; onClick: () => void } }) {
   const { settings } = useApp()
   const accounts = useAccounts()
   const [acc, setAcc] = useState('')
@@ -37,7 +37,7 @@ export function Settings() {
   }
 
   return (
-    <Page title="Settings">
+    <Page title="Settings" back={back}>
       <h2>General</h2>
       <div className="card stack">
         <div className="grid2">
@@ -65,13 +65,22 @@ export function Settings() {
       <h2>Accounts</h2>
       <div className="card">
         {accounts.map((a) => (
-          <div className="line row" key={a.id}>
-            <input className="grow" aria-label="Account name" defaultValue={a.name} onBlur={(e) => e.target.value.trim() && db.accounts.update(a.id, { name: e.target.value.trim() })} />
-            <div style={{ width: 130 }}><MoneyInput label={`Opening balance for ${a.name}`} value={a.openingBalance} onChange={(openingBalance) => db.accounts.update(a.id, { openingBalance })} /></div>
-            <button className="ghost danger" aria-label={`Delete ${a.name}`} onClick={async () => {
-              if ((await db.transactions.where('accountId').equals(a.id).count()) > 0) return alert('This account has transactions. Delete or move them first.')
-              await db.accounts.delete(a.id)
-            }}>✕</button>
+          <div className="stack" key={a.id} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
+            <div className="row">
+              <input className="grow" aria-label="Account name" defaultValue={a.name} onBlur={(e) => e.target.value.trim() && db.accounts.update(a.id, { name: e.target.value.trim() })} />
+              <button className="ghost danger" aria-label={`Delete ${a.name}`} onClick={async () => {
+                if ((await db.transactions.where('accountId').equals(a.id).count()) > 0) return alert('This account has transactions. Delete or move them first.')
+                await db.accounts.delete(a.id)
+              }}>✕</button>
+            </div>
+            <div className="grid2">
+              <label>Type
+                <select aria-label={`Type of ${a.name}`} value={a.kind ?? 'account'} onChange={(e) => db.accounts.update(a.id, { kind: e.target.value as AccountKind })}>
+                  <option value="account">Bank account</option><option value="card">Credit card</option><option value="savings">Savings</option><option value="cash">Cash</option>
+                </select>
+              </label>
+              <label>Balance before your first transaction<MoneyInput label={`Opening balance for ${a.name}`} value={a.openingBalance} onChange={(openingBalance) => db.accounts.update(a.id, { openingBalance })} /></label>
+            </div>
           </div>
         ))}
         <div className="row" style={{ marginTop: 8 }}>

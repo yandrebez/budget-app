@@ -14,6 +14,7 @@ export function ExcelImport({ go }: { go: (tab: string) => void }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ApplyResult | null>(null)
+  const [openingAccount, setOpeningAccount] = useState('')
 
   async function onFile(file: File) {
     setError(''); setResult(null); setPlan(null)
@@ -24,6 +25,7 @@ export function ExcelImport({ go }: { go: (tab: string) => void }) {
       const p = parseWorkbook(await readXlsx(await file.arrayBuffer()))
       setFileName(file.name)
       setPlan(p)
+      setOpeningAccount(p.accounts[0] ?? '')
       setInclude({ settings: !!p.settings, budget: p.categories.length > 0, debts: p.debts.length > 0, pots: p.pots.length > 0, transactions: p.transactions.length > 0 })
     } catch (e) {
       setError(`Could not read this file. ${(e as Error).message}`)
@@ -34,7 +36,7 @@ export function ExcelImport({ go }: { go: (tab: string) => void }) {
     if (!plan) return
     if (mode === 'fresh' && !confirm('This erases your current groups, categories, accounts, transactions, debts and savings first. Continue?')) return
     setBusy(true)
-    try { setResult(await applyPlan(plan, { include, mode })); setPlan(null) }
+    try { setResult(await applyPlan(plan, { include, mode, openingAccount })); setPlan(null) }
     catch (e) { setError(`Import failed. Nothing was changed. ${(e as Error).message}`) }
     finally { setBusy(false) }
   }
@@ -83,6 +85,13 @@ export function ExcelImport({ go }: { go: (tab: string) => void }) {
             {row('settings', 'Budget period', plan.settings ? 1 : 0,
               plan.settings ? `Starts on day ${plan.settings.payDay}, ${plan.settings.weekendRule === 'before' ? 'moves to the previous working day' : plan.settings.weekendRule === 'after' ? 'moves to the next working day' : 'no weekend adjustment'}, ${plan.settings.holidays.length} public holidays` : 'No Cycles sheet found')}
           </div>
+          {plan.openingBalance > 0 && include.transactions && plan.accounts.length > 0 && (
+            <div className="card stack">
+              <label>Your workbook starts with an opening balance of {fmt(plan.openingBalance)}. Which account does it belong to?
+                <select value={openingAccount} onChange={(e) => setOpeningAccount(e.target.value)}>{plan.accounts.map((a) => <option key={a} value={a}>{a}</option>)}</select>
+              </label>
+            </div>
+          )}
           <div className="card stack">
             <label>When data already exists
               <select value={mode} onChange={(e) => setMode(e.target.value as ApplyOptions['mode'])}>

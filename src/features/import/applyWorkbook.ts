@@ -10,13 +10,15 @@ export interface ApplyOptions {
   include: { settings: boolean; budget: boolean; debts: boolean; pots: boolean; transactions: boolean }
   /** `fresh` erases existing budget data first; `merge` adds to / updates what exists. */
   mode: 'merge' | 'fresh'
+  /** Account (by name) that receives the workbook's opening balance. */
+  openingAccount?: string
 }
 
 export interface ApplyResult { categories: number; transactions: number; skippedDuplicates: number; debts: number; pots: number }
 
 const k = (s: string) => s.trim().toLowerCase()
 
-export async function applyPlan(plan: WorkbookPlan, { include, mode }: ApplyOptions): Promise<ApplyResult> {
+export async function applyPlan(plan: WorkbookPlan, { include, mode, openingAccount }: ApplyOptions): Promise<ApplyResult> {
   const result: ApplyResult = { categories: 0, transactions: 0, skippedDuplicates: 0, debts: 0, pots: 0 }
   await db.transaction('rw', [db.groups, db.categories, db.accounts, db.transactions, db.debts, db.pots, db.rules], async () => {
     if (mode === 'fresh') {
@@ -73,6 +75,8 @@ export async function applyPlan(plan: WorkbookPlan, { include, mode }: ApplyOpti
       for (const name of plan.accounts) {
         if (!accounts.has(k(name))) { const a = { id: newId(), name, openingBalance: 0 }; await db.accounts.add(a); accounts.set(k(name), a) }
       }
+      const opening = openingAccount && accounts.get(k(openingAccount))
+      if (opening && plan.openingBalance) await db.accounts.update(opening.id, { openingBalance: plan.openingBalance })
       const hashes = fingerprints(plan.transactions)
       const seen = new Set((await db.transactions.where('importHash').anyOf(hashes).toArray()).map((t) => t.importHash))
       const rows: Transaction[] = []

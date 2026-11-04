@@ -20,6 +20,8 @@ export interface WorkbookPlan {
   groups: PlanGroup[]
   categories: PlanCategory[]
   accounts: string[]
+  /** Opening balance found on the Setup sheet (cents), 0 if none. */
+  openingBalance: number
   transactions: PlanTx[]
   debts: PlanDebt[]
   pots: PlanPot[]
@@ -78,7 +80,7 @@ function tableRows(data: Cell[][], from: number, keyCol: number): Cell[][] {
 
 export function parseWorkbook(input: Sheet[]): WorkbookPlan {
   const sheets = input as unknown as TypedSheet[]
-  const plan: WorkbookPlan = { settings: null, groups: [], categories: [], accounts: [], transactions: [], debts: [], pots: [], warnings: [] }
+  const plan: WorkbookPlan = { settings: null, groups: [], categories: [], accounts: [], openingBalance: 0, transactions: [], debts: [], pots: [], warnings: [] }
   const catByName = new Map<string, PlanCategory>()
   const groupNames = new Map<string, string>()
   const addGroup = (name: string) => {
@@ -116,6 +118,15 @@ export function parseWorkbook(input: Sheet[]): WorkbookPlan {
     }
   }
 
+  // Opening balance: a Setup row labelled "Opening balance ..." followed by a number
+  for (const row of setup?.data ?? []) {
+    if (/opening balance/i.test(text(row[0]))) {
+      const n = row.slice(1).find((c) => typeof c === 'number')
+      if (typeof n === 'number') plan.openingBalance = toCents(n)
+      break
+    }
+  }
+
   // Transactions
   const txSheet = findSheet(sheets, /^transactions?$/i)
   const th = txSheet && findHeader(txSheet.data, [['date', 'transaction date'], ['category'], ['money in', 'credit', 'amount', 'in']])
@@ -132,7 +143,12 @@ export function parseWorkbook(input: Sheet[]): WorkbookPlan {
       if (row.every((c) => c == null || text(c) === '')) continue
       const date = dateOf(row[cDate])
       let moneyIn = 0, moneyOut = 0
-      if (cIn >= 0 || cOut >= 0) { moneyIn = Math.abs(cIn >= 0 ? money(row[cIn]) : 0); moneyOut = Math.abs(cOut >= 0 ? money(row[cOut]) : 0) }
+      if (cIn >= 0 || cOut >= 0) {
+        // Follow the sheet's own arithmetic (in minus out): a negative "out" is a refund, a negative "in" a reversal.
+        const i = cIn >= 0 ? money(row[cIn]) : 0, o = cOut >= 0 ? money(row[cOut]) : 0
+        moneyIn = Math.max(0, i) + Math.max(0, -o)
+        moneyOut = Math.max(0, o) + Math.max(0, -i)
+      }
       else if (cAmt >= 0) { const a = money(row[cAmt]); if (a >= 0) moneyIn = a; else moneyOut = -a }
       if (!date || (moneyIn === 0 && moneyOut === 0)) { skipped++; continue }
       const account = (cAcc !== undefined && text(row[cAcc])) || 'Imported'
