@@ -5,16 +5,40 @@ import { MoneyInput, Page } from '@/components/ui'
 import { db } from '@/db/db'
 import { exportBackup, importBackup, updateSettings, wipeAll } from '@/db/repo'
 import { southAfricanHolidays } from '@/domain/cycles/holidays'
-import { useAccounts } from '@/hooks/useBudgetData'
+import { openingToMatch, balancesByAccount } from '@/domain/balances/balances'
+import { useAccounts, useTransactions } from '@/hooks/useBudgetData'
+import { todayISO } from '@/lib/dates'
 import { newId } from '@/lib/id'
+
+/** "What does your bank say?" — works out the starting balance that makes this account agree. */
+function ReconcileRow({ current, actual, onActual, onApply, fmt }: { current: number; actual: number | undefined; onActual: (cents: number) => void; onApply: () => void; fmt: (c: number) => string }) {
+  const diff = actual === undefined ? 0 : actual - current
+  return (
+    <div className="stack" style={{ background: 'var(--bg)', borderRadius: 12, padding: 12 }}>
+      <div className="row between small"><span className="muted">Balance in the app today</span><b className="num">{fmt(current)}</b></div>
+      <label>Match to your bank balance (what your bank app shows now)
+        <MoneyInput label="Actual bank balance" value={actual ?? 0} onChange={onActual} allowNegative />
+      </label>
+      {actual !== undefined && actual !== 0 && (
+        <div className="small">
+          {diff === 0 ? <span className="good">Already matches.</span> : <>The app is {fmt(Math.abs(diff))} {diff > 0 ? 'lower' : 'higher'} than your bank. <button className="link" onClick={onApply}>Match it</button> (changes only the starting balance, not your transactions).</>}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function Settings({ back }: { back?: { label: string; onClick: () => void } }) {
   const { settings } = useApp()
   const accounts = useAccounts()
+  const txs = useTransactions()
+  const { fmt } = useApp()
+  const [actual, setActual] = useState<Record<string, number | undefined>>({})
   const [acc, setAcc] = useState('')
   const [holiday, setHoliday] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
-  if (!accounts) return null
+  if (!accounts || !txs) return null
+  const balances = balancesByAccount(accounts, txs, todayISO())
 
   async function download() {
     const blob = new Blob([JSON.stringify(await exportBackup(), null, 2)], { type: 'application/json' })
@@ -73,6 +97,16 @@ export function Settings({ back }: { back?: { label: string; onClick: () => void
                 await db.accounts.delete(a.id)
               }}>✕</button>
             </div>
+            <ReconcileRow
+              current={balances.get(a.id) ?? 0} fmt={fmt} actual={actual[a.id]} onActual={(v) => setActual({ ...actual, [a.id]: v })}
+              onApply={async () => {
+                const value = actual[a.id]
+                if (value === undefined) return
+                if (!confirm(`Set ${a.name} to ${fmt(value)}? Only its starting balance changes; no transactions are touched.`)) return
+                await db.accounts.update(a.id, { openingBalance: openingToMatch(a, txs, value, todayISO()) })
+                setActual({ ...actual, [a.id]: undefined })
+              }}
+            />
             <div className="grid2">
               <label>Type
                 <select aria-label={`Type of ${a.name}`} value={a.kind ?? 'account'} onChange={(e) => db.accounts.update(a.id, { kind: e.target.value as AccountKind })}>

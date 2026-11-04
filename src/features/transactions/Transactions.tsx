@@ -3,6 +3,7 @@ import type { Transaction } from '@/types'
 import { useApp } from '@/app/AppContext'
 import { CycleSwitcher, Empty, Modal, MoneyInput, Page } from '@/components/ui'
 import { CategorySelect } from '@/components/CategorySelect'
+import { MoveMoney } from './MoveMoney'
 import { db } from '@/db/db'
 import { balancesByAccount } from '@/domain/balances/balances'
 import { patternFor } from '@/domain/transactions/categorise'
@@ -26,6 +27,7 @@ export function Transactions({ go }: { go: (tab: string) => void }) {
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<'cycle' | 'all'>('cycle')
   const [selected, setSelected] = useState<string>(() => recall() ?? '')
+  const [moving, setMoving] = useState(false)
 
   // Land on a real account (the first one) rather than a mixed list.
   const accounts = ledger?.accounts
@@ -93,6 +95,7 @@ export function Transactions({ go }: { go: (tab: string) => void }) {
           <div className="card">
             <div className="xs muted">{active === ALL ? 'Combined balance' : `${acct ? KIND_LABEL[acct.kind ?? 'account'] : ''} balance`}</div>
             <div className={`hero num ${balance < 0 ? 'bad' : ''}`}>{fmt(balance)}</div>
+            {accounts!.length > 1 && <button className="link small" style={{ float: 'right' }} onClick={() => setMoving(true)}>⇄ Move money</button>}
             <div className="row xs muted" style={{ marginTop: 8, gap: 16 }}>
               <span>In <b className="num good">{fmt(periodIn)}</b></span><span>Out <b className="num">{fmt(periodOut)}</b></span>
               <span className="faint">{scope === 'cycle' ? 'this period' : 'all time'}</span>
@@ -127,6 +130,7 @@ export function Transactions({ go }: { go: (tab: string) => void }) {
           )}
         </>
       )}
+      <MoveMoney open={moving} onClose={() => setMoving(false)} accounts={accounts!} defaultFrom={acct?.id ?? accounts![0]?.id ?? ''} />
       <Modal open={!!draft} onClose={() => setDraft(null)} title={draft?.id ? 'Edit transaction' : 'New transaction'}>
         {draft && (
           <div className="stack">
@@ -139,7 +143,12 @@ export function Transactions({ go }: { go: (tab: string) => void }) {
             <label>Account<select value={draft.accountId} onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}>{accounts!.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
             <label>Category<CategorySelect value={draft.categoryId} onChange={(categoryId) => setDraft({ ...draft, categoryId })} groups={groups} categories={categories} /></label>
             <div className="row between">
-              {draft.id ? <button className="danger" onClick={async () => { await db.transactions.delete(draft.id!); setDraft(null) }}>Delete</button> : <span />}
+              {draft.id ? <button className="danger" onClick={async () => {
+                const row = await db.transactions.get(draft.id!)
+                if (row?.transferId && confirm('This is one side of a transfer between your accounts. Delete both sides?')) await db.transactions.filter((t) => t.transferId === row.transferId).delete()
+                else await db.transactions.delete(draft.id!)
+                setDraft(null)
+              }}>Delete</button> : <span />}
               <span className="row"><button onClick={() => setDraft(null)}>Cancel</button><button className="primary" onClick={save} disabled={!draft.accountId || draft.amount <= 0}>Save</button></span>
             </div>
           </div>

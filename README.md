@@ -9,7 +9,8 @@ Log transactions or import bank statements, and the dashboard, budget, debt and 
 - **Blank by default** – no categories, accounts or sample data; you build your own budget.
 - **Custom budget period** – start day (e.g. pay day), optional move to previous/next working day, public-holiday calendar (South African preset included).
 - **Budget** – groups (income / expense / debt / savings / transfer) and categories with a monthly amount, plus "left to allocate".
-- **Balance bar** – always at the top: this month's running balance and your overall balance, with a per-account breakdown on tap.
+- **Balance bar** – always at the top: this month's running balance and your overall balance (spending accounts; savings accounts are shown separately), with a per-account breakdown on tap.
+- **Move money** – record transfers between your own accounts (e.g. leftover into savings) as linked transactions that don't count as spending; **Match to bank balance** reconciles an account's starting balance with what your bank shows.
 - **Home** – left to spend, pace check, what needs attention, and every category with how much is used and left.
 - **Activity** – transactions kept separate per account or card (with each account's balance), grouped by day; add / edit / search; remembers description → category.
 - **Statement import** – CSV or PDF from Discovery Bank, FNB, Capitec or any bank: preamble skipping, column mapping (remembered per layout), duplicate detection, per-row categorising. PDFs are read on-device (password-protected ones supported); scanned/image PDFs are not.

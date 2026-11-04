@@ -22,7 +22,7 @@ export function Progress({ fraction, over, calm, thick }: { fraction: number; ov
 }
 
 /** Number input that edits whole currency units but reports integer cents. */
-export function MoneyInput({ value, onChange, label, ...rest }: { value: number; onChange: (cents: number) => void; label?: string } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+export function MoneyInput({ value, onChange, label, allowNegative, ...rest }: { value: number; onChange: (cents: number) => void; label?: string; allowNegative?: boolean } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
   const [text, setText] = useState(value ? String(fromCents(value)) : '')
   const last = useRef(value)
   useEffect(() => {
@@ -30,7 +30,7 @@ export function MoneyInput({ value, onChange, label, ...rest }: { value: number;
   }, [value])
   return (
     <input
-      inputMode="decimal" type="number" step="0.01" min="0" aria-label={label} placeholder="0.00" {...rest}
+      inputMode="decimal" type="number" step="0.01" min={allowNegative ? undefined : 0} aria-label={label} placeholder="0.00" {...rest}
       value={text}
       onChange={(e) => {
         setText(e.target.value)
