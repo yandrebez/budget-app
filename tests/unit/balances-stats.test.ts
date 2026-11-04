@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { balancesByAccount, periodFlow, totalBalance } from '@/domain/balances/balances'
+import { balancesByAccount, isSpendingAccount, openingToMatch, periodFlow, totalBalance } from '@/domain/balances/balances'
 import { breakdown, foldTail, periodStats, seriesByPeriod } from '@/domain/stats/stats'
 import { cycleForMonth } from '@/domain/cycles/cycle'
+import { buildTransfer } from '@/domain/transactions/transfer'
 import type { Account, Category, Group, Transaction } from '@/types'
 
 const accounts: Account[] = [
@@ -45,6 +46,40 @@ describe('balances', () => {
     expect(f.moneyIn).toBe(20500)
     expect(f.moneyOut).toBe(8000 + 1500 + 2000 + 100)
     expect(f.closing).toBe(f.opening + 20500 - 11600)
+  })
+})
+
+describe('reconciling to the bank', () => {
+  it('moves only the opening balance so the account matches the bank', () => {
+    const a = accounts[0]
+    const current = balancesByAccount([a], txs, '2026-10-31').get('a')!
+    const opening = openingToMatch(a, txs, current + 5000, '2026-10-31')
+    expect(opening).toBe(a.openingBalance + 5000)
+    expect(balancesByAccount([{ ...a, openingBalance: opening }], txs, '2026-10-31').get('a')).toBe(current + 5000)
+  })
+  it('can correct downwards and ignores future-dated rows', () => {
+    const a = accounts[0]
+    expect(balancesByAccount([{ ...a, openingBalance: openingToMatch(a, txs, 1234, '2026-10-31') }], txs, '2026-10-31').get('a')).toBe(1234)
+  })
+})
+
+describe('moving money to savings', () => {
+  const sav: Account = { id: 's', name: 'Savings', kind: 'savings', openingBalance: 0 }
+  it('builds two linked legs and rejects bad input', () => {
+    const [out, inn] = buildTransfer({ fromId: 'a', toId: 's', amount: 27797, date: '2026-10-30', note: ' Leftover ', categoryId: 'move', ids: { out: 'o', in: 'i', transfer: 't' } })
+    expect(out).toMatchObject({ accountId: 'a', moneyOut: 27797, moneyIn: 0, transferId: 't', description: 'Leftover' })
+    expect(inn).toMatchObject({ accountId: 's', moneyIn: 27797, moneyOut: 0, transferId: 't' })
+    expect(() => buildTransfer({ fromId: 'a', toId: 'a', amount: 1, date: 'x', note: '', categoryId: 'm', ids: { out: 'o', in: 'i', transfer: 't' } })).toThrow()
+    expect(() => buildTransfer({ fromId: 'a', toId: 's', amount: 0, date: 'x', note: '', categoryId: 'm', ids: { out: 'o', in: 'i', transfer: 't' } })).toThrow()
+  })
+  it('lowers the spending balance, raises savings, and leaves the grand total unchanged', () => {
+    const all = [...accounts, sav]
+    const [out, inn] = buildTransfer({ fromId: 'a', toId: 's', amount: 5000, date: '2026-10-30', note: '', categoryId: 'move', ids: { out: 'o', in: 'i', transfer: 't' } })
+    const before = totalBalance(balancesByAccount(all, txs, '2026-10-31'))
+    const b = balancesByAccount(all, [...txs, out, inn], '2026-10-31')
+    expect(totalBalance(b)).toBe(before)
+    expect(b.get('s')).toBe(5000)
+    expect(all.filter(isSpendingAccount).map((a) => a.id)).toEqual(['a', 'b'])
   })
 })
 

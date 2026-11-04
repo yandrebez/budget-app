@@ -1,5 +1,8 @@
 import type { Account, ISODate, Transaction } from '@/types'
 
+/** Savings accounts hold money you have set aside, so they are kept out of the headline balance. */
+export const isSpendingAccount = (a: Account): boolean => a.kind !== 'savings'
+
 /** Balance of every account as of a date (inclusive). Future-dated rows are ignored when `asOf` is given. */
 export function balancesByAccount(accounts: Account[], txs: Transaction[], asOf?: ISODate): Map<string, number> {
   const out = new Map(accounts.map((a) => [a.id, a.openingBalance]))
@@ -38,4 +41,13 @@ export function periodFlow(
     }
   }
   return { opening, moneyIn, moneyOut, net: moneyIn - moneyOut, closing: opening + within }
+}
+
+/**
+ * The opening balance that makes an account's balance (as of `asOf`) equal what the bank says.
+ * Only the starting point moves; no transaction is changed.
+ */
+export function openingToMatch(account: Account, txs: Transaction[], actual: number, asOf: ISODate): number {
+  const current = balancesByAccount([account], txs, asOf).get(account.id) ?? account.openingBalance
+  return account.openingBalance + (actual - current)
 }

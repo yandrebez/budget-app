@@ -1,4 +1,5 @@
 import type { BackupFile, Settings, Transaction } from '@/types'
+import { newId } from '@/lib/id'
 import { db } from './db'
 import { defaultGroups, defaultSettings } from './defaults'
 
@@ -49,4 +50,21 @@ export async function wipeAll(): Promise<void> {
     for (const t of TABLES) await db.table(t).clear()
   })
   await ensureSeed()
+}
+
+/** Id of the category used for moving money between your own accounts, created on first use. */
+export async function ensureTransferCategory(): Promise<string> {
+  return db.transaction('rw', db.groups, db.categories, async () => {
+    const groups = await db.groups.toArray()
+    let group = groups.find((g) => g.kind === 'transfer')
+    if (!group) {
+      group = { id: newId(), name: 'Transfers', kind: 'transfer', order: groups.length }
+      await db.groups.add(group)
+    }
+    const existing = (await db.categories.toArray()).filter((c) => c.groupId === group.id).sort((a, b) => a.name.localeCompare(b.name))[0]
+    if (existing) return existing.id
+    const category = { id: newId(), name: 'Transfer between accounts', groupId: group.id, monthlyBudget: 0 }
+    await db.categories.add(category)
+    return category.id
+  })
 }

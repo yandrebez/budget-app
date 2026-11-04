@@ -38,6 +38,8 @@ export interface Transaction {
   moneyOut: number
   /** Fingerprint used to skip duplicates when importing statements. */
   importHash?: string
+  /** Shared by the two sides of a transfer between your own accounts. */
+  transferId?: string
 }
 
 export interface Debt {
