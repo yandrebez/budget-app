@@ -14,6 +14,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg'],
+      workbox: {
+        // The 1.2 MB PDF worker is cached the first time a PDF is opened, not on install.
+        runtimeCaching: [{ urlPattern: /pdf\.worker.*\.mjs$/, handler: 'CacheFirst', options: { cacheName: 'pdf-worker' } }],
+      },
       manifest: {
         name: 'Budget App',
         short_name: 'Budget',

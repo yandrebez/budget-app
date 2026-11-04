@@ -11,12 +11,13 @@ Log transactions or import bank statements, and the dashboard, budget, debt and 
 - **Budget** – groups (income / expense / debt / savings / transfer) and categories with a monthly amount, plus "left to allocate".
 - **Dashboard** – period switcher, spent vs budget, pace check, over-budget and uncategorised warnings.
 - **Transactions** – add / edit / search; remembers description → category for next time.
-- **Statement import** – CSV from Discovery Bank, FNB, Capitec or any bank: preamble skipping, column mapping (remembered per layout), duplicate detection, per-row categorising.
+- **Statement import** – CSV or PDF from Discovery Bank, FNB, Capitec or any bank: preamble skipping, column mapping (remembered per layout), duplicate detection, per-row categorising. PDFs are read on-device (password-protected ones supported); scanned/image PDFs are not.
+- **Excel budget import** – upload an existing `.xlsx` tracker (Budget, Setup, Transactions, Debt, Savings and Cycles sheets are found by name and column headings). Preview first, tick what to import, safe to repeat without duplicates.
 - **Debt & Savings** – balances, interest/target, payoff and time-to-goal estimates driven by your budget.
 - **History** – 12-period income vs spend.
 - **Backup / restore** as JSON; installable and fully offline.
 
-> Bank layouts are detected best-effort from column names. Please test with a real export from each bank and report any that need a tweak.
+> Bank layouts (CSV and PDF) are detected best-effort. Please test with a real statement from each bank and report any that need a tweak.
 
 ## Goals
 - Replace the spreadsheet's formulas with a fast, installable app (see [`docs/SPREADSHEET-MAPPING.md`](docs/SPREADSHEET-MAPPING.md)).

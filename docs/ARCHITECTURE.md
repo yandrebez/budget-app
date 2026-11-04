@@ -45,7 +45,13 @@ UI (features/, components/)  →  hooks/  →  domain/ (pure calculations)
 - `Settings { currency, locale, theme }`
 
 ## Statement import flow
-`file → detect format → parse → map columns (saved per bank) → auto-categorise (rules from past descriptions) → review screen → de-duplicate → save`
+`file → detect format (CSV | PDF) → parse → map columns (saved per layout) → auto-categorise (rules from past descriptions) → review screen → de-duplicate → save`
+
+PDFs: pdf.js extracts text with positions (lazy-loaded); `parsers/pdfTable.ts` (pure, tested) rebuilds the table from the header row's column positions, appends wrapped description lines, infers missing years, and works out money in/out from the running balance when amounts are unsigned. The result is the same shape as a parsed CSV, so one mapping/review UI serves both.
+
+## Excel budget import
+`.xlsx → parsers/workbook.ts (pure: sheets located by name + header text, returns a plan) → preview with per-section tick boxes → applyWorkbook.ts (one Dexie transaction; merge or fresh)`.
+Re-importing is idempotent: categories/groups/accounts/debts/pots match by name and transactions by fingerprint.
 
 ## Roadmap
 1. **Foundation** – scaffold, PWA shell, DB, settings (categories/accounts/pay cycle)
