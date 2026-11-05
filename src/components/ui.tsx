@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { fromCents, toCents } from '@/lib/money'
+import { fromCents, parseTypedNumber, toCents } from '@/lib/money'
 import { useApp } from '@/app/AppContext'
 import { formatDate } from '@/lib/dates'
 import { monthLong } from '@/lib/format'
@@ -21,22 +21,57 @@ export function Progress({ fraction, over, calm, thick }: { fraction: number; ov
   return <div className={`bar${thick ? ' thick' : ''}${over ? ' over' : fraction > 0.85 && !calm ? ' warn' : ''}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></div>
 }
 
-/** Number input that edits whole currency units but reports integer cents. */
+/**
+ * Amount box that edits whole currency units but reports integer cents. It is a text field (not
+ * type="number") so a comma works on phones that use a decimal comma; both "12,50" and "12.50" are read.
+ */
 export function MoneyInput({ value, onChange, label, allowNegative, ...rest }: { value: number; onChange: (cents: number) => void; label?: string; allowNegative?: boolean } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
   const [text, setText] = useState(value ? String(fromCents(value)) : '')
   const last = useRef(value)
   useEffect(() => {
     if (value !== last.current) { last.current = value; setText(value ? String(fromCents(value)) : '') }
   }, [value])
+
+  const update = (raw: string) => {
+    const cleaned = raw.replace(allowNegative ? /[^\d.,\-−–\s]/g : /[^\d.,\s]/g, '')
+    setText(cleaned)
+    const n = parseTypedNumber(cleaned)
+    const cents = n === null ? 0 : toCents(n)
+    last.current = cents
+    onChange(cents)
+  }
+
+  return (
+    <div className="row" style={{ gap: 6 }}>
+      <input
+        type="text" inputMode="decimal" enterKeyHint="done" autoComplete="off" aria-label={label} placeholder="0,00" {...rest}
+        value={text} onChange={(e) => update(e.target.value)}
+      />
+      {allowNegative && (
+        <button type="button" aria-label="Switch between positive and negative" title="Positive / negative" style={{ minWidth: 44, padding: '8px 0' }}
+          onClick={() => update(/^[-−–]/.test(text.trim()) ? text.trim().replace(/^[-−–]\s*/, '') : `-${text.trim()}`)}>±</button>
+      )}
+    </div>
+  )
+}
+
+/** Plain decimal box (e.g. an interest rate): same comma-friendly behaviour, reports a number or null. */
+export function DecimalInput({ value, onChange, label, ...rest }: { value: number; onChange: (n: number) => void; label?: string } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+  const [text, setText] = useState(value ? String(value) : '')
+  const last = useRef(value)
+  useEffect(() => {
+    if (value !== last.current) { last.current = value; setText(value ? String(value) : '') }
+  }, [value])
   return (
     <input
-      inputMode="decimal" type="number" step="0.01" min={allowNegative ? undefined : 0} aria-label={label} placeholder="0.00" {...rest}
+      type="text" inputMode="decimal" enterKeyHint="done" autoComplete="off" aria-label={label} placeholder="0" {...rest}
       value={text}
       onChange={(e) => {
-        setText(e.target.value)
-        const c = e.target.value === '' ? 0 : toCents(Number(e.target.value))
-        last.current = c
-        onChange(Number.isFinite(c) ? c : 0)
+        const cleaned = e.target.value.replace(/[^\d.,\s]/g, '')
+        setText(cleaned)
+        const n = Math.max(0, parseTypedNumber(cleaned) ?? 0)
+        last.current = n
+        onChange(n)
       }}
     />
   )

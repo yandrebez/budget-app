@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseAmount } from '@/lib/money'
+import { parseAmount, parseTypedNumber } from '@/lib/money'
 import { parseDate } from '@/features/import/parsers/dates'
 import { detectBank, fingerprints, guessMapping, mapRows, parseCsv } from '@/features/import/parsers/csv'
 
@@ -49,5 +49,15 @@ describe('csv import', () => {
     const [a, b] = fingerprints([t, t])
     expect(a).not.toBe(b)
     expect(fingerprints([t, t])).toEqual([a, b])
+  })
+})
+
+describe('parseTypedNumber (amount boxes)', () => {
+  it.each([
+    ['3928,09', 3928.09], ['3928.09', 3928.09], ['12,5', 12.5], ['1 234,56', 1234.56], ['1,234.56', 1234.56],
+    ['1.234,56', 1234.56], ['1,234,567', 1234567], ['12,', 12], ['-198,63', -198.63], ['0', 0],
+  ])('%s -> %d', (input, n) => expect(parseTypedNumber(input)).toBe(n))
+  it('returns null until there is a number', () => {
+    for (const t of ['', '-', ',', '.', ' ', 'abc']) expect(parseTypedNumber(t)).toBeNull()
   })
 })

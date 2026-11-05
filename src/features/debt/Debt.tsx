@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '@/app/AppContext'
-import { Empty, MoneyInput, Page } from '@/components/ui'
+import { DecimalInput, Empty, MoneyInput, Page } from '@/components/ui'
 import { CategorySelect } from '@/components/CategorySelect'
 import { db } from '@/db/db'
 import { payoff } from '@/domain/debt/payoff'
@@ -29,7 +29,7 @@ export function Debt({ back }: { back?: { label: string; onClick: () => void } }
               <button className="ghost danger" aria-label={`Delete ${d.name}`} onClick={() => confirm(`Delete ${d.name}?`) && db.debts.delete(d.id)}>✕</button></div>
             <div className="grid2">
               <label>Balance now<MoneyInput value={d.balance} onChange={(balance) => db.debts.update(d.id, { balance })} /></label>
-              <label>Interest rate (% a year)<input type="number" step="0.01" min="0" defaultValue={d.interestRate * 100 || ''} onBlur={(e) => db.debts.update(d.id, { interestRate: (Number(e.target.value) || 0) / 100 })} /></label>
+              <label>Interest rate (% a year)<DecimalInput label={`Interest rate for ${d.name}`} value={Math.round(d.interestRate * 10000) / 100} onChange={(pct) => db.debts.update(d.id, { interestRate: pct / 100 })} /></label>
             </div>
             <label>Paid from budget category<CategorySelect value={d.categoryId ?? ''} onChange={(id) => db.debts.update(d.id, { categoryId: id || null })} groups={groups.filter((g) => g.kind === 'debt')} categories={categories} /></label>
             <div className="small muted">

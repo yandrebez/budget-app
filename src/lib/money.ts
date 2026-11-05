@@ -38,3 +38,26 @@ export function parseAmount(raw: string | undefined | null): number | null {
   const cents = Math.round(n * 100)
   return negative ? -cents : cents
 }
+
+/**
+ * Reads what a person types into an amount box. Accepts "3928,09" and "3928.09" alike (phones in
+ * comma-decimal regions show a comma key), ignores spaces, and treats a lone comma as the decimal mark.
+ * Returns null when there is no number yet (empty, "-", ",").
+ */
+export function parseTypedNumber(raw: string): number | null {
+  let s = raw.trim().replace(/[\s ]/g, '')
+  const negative = /^[-−–]/.test(s)
+  s = s.replace(/^[-−–]/, '')
+  if (!s || !/^[\d.,]+$/.test(s) || !/\d/.test(s)) return null
+  const lastDot = s.lastIndexOf('.'), lastComma = s.lastIndexOf(',')
+  if (lastDot >= 0 && lastComma >= 0) {
+    const dec = lastDot > lastComma ? '.' : ','
+    s = s.split(dec === '.' ? ',' : '.').join('').replace(dec, '.')
+  } else if (lastComma >= 0) {
+    s = (s.match(/,/g) ?? []).length > 1 ? s.replace(/,/g, '') : s.replace(',', '.')
+  } else if ((s.match(/\./g) ?? []).length > 1) {
+    s = s.replace(/\./g, '')
+  }
+  const n = Number(s)
+  return Number.isFinite(n) ? (negative ? -n : n) : null
+}
