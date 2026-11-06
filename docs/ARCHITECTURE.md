@@ -49,9 +49,15 @@ UI (features/, components/)  →  hooks/  →  domain/ (pure calculations)
 
 PDFs: pdf.js extracts text with positions (lazy-loaded); `parsers/pdfTable.ts` (pure, tested) rebuilds the table from the header row's column positions, appends wrapped description lines, infers missing years, and works out money in/out from the running balance when amounts are unsigned. The result is the same shape as a parsed CSV, so one mapping/review UI serves both.
 
-## Excel budget import
-`.xlsx → parsers/workbook.ts (pure: sheets located by name + header text, returns a plan) → preview with per-section tick boxes → applyWorkbook.ts (one Dexie transaction; merge or fresh)`.
-Re-importing is idempotent: categories/groups/accounts/debts/pots match by name and transactions by fingerprint.
+## Excel import (any workbook)
+`.xlsx → scan.ts (find tables by structure) → classify.ts (group repeated tables, score each table's role from headings + cell types, auto-map columns) → person reviews/overrides → workbook.ts buildPlan (pure) → applyWorkbook.ts (one Dexie transaction; merge or fresh)`.
+
+- **No sheet names or fixed positions.** A table is a header row of short text labels with data beneath it. Side-by-side tables, blank-row gaps inside a ledger, note cells in a header row and `TOTAL` rows are handled.
+- **Roles:** transactions, budget, categories, accounts, savings goals, debts, pay periods, public holidays, or ignore. Lookalikes (a dashboard summary of the same data) are ranked by how many useful columns they have, and the extras are switched off with a note.
+- **Same headings on several sheets = one source** (one tab per month).
+- **Fees** are added to money out. A **balance column** is trusted only where it adds up, and then gives each account's opening balance; otherwise the accounts table's balance is used, and a mismatch is reported.
+- **Manual override** is the guarantee: any table can be set to any role and its columns chosen.
+- Re-importing is idempotent: names match accounts/categories/debts/goals; transactions by fingerprint.
 
 ## Roadmap
 1. **Foundation** – scaffold, PWA shell, DB, settings (categories/accounts/pay cycle)

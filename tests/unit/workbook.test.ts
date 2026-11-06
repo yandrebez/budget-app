@@ -11,7 +11,7 @@ const load = async (): Promise<WorkbookPlan> => {
   const buf = readFileSync('tests/fixtures/sample-budget.xlsx')
   return parseWorkbook(await readXlsx(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)))
 }
-const all = { settings: true, budget: true, debts: true, pots: true, transactions: true }
+const all = { settings: true, budget: true, accounts: true, debts: true, pots: true, transactions: true }
 
 describe('parseWorkbook', () => {
   it('reads groups, budgets and notes by header', async () => {
@@ -31,7 +31,7 @@ describe('parseWorkbook', () => {
     // A negative "Money out" is a refund (the sheet's own maths is in minus out), not an expense.
     expect(p.transactions[5]).toMatchObject({ description: 'Refund as negative out', moneyIn: 2000, moneyOut: 0 })
     expect(p.openingBalance).toBe(5000)
-    expect(p.accounts.sort()).toEqual(['Main', 'Savings acc'])
+    expect(p.accounts.map((a) => a.name).sort()).toEqual(['Main', 'Savings acc'])
     expect(p.warnings.join(' ')).toMatch(/1 transaction row/)
     expect(p.categories.find((c) => c.name === 'Mystery')?.group).toBe('Imported')
   })
@@ -87,7 +87,7 @@ describe('applyPlan', () => {
 
   it('respects unticked sections and fresh mode', async () => {
     await db.accounts.add({ id: 'old', name: 'Old', openingBalance: 0 })
-    await applyPlan(await load(), { include: { ...all, transactions: false, debts: false }, mode: 'fresh' })
+    await applyPlan(await load(), { include: { ...all, transactions: false, debts: false, accounts: false }, mode: 'fresh' })
     expect(await db.transactions.count()).toBe(0)
     expect(await db.debts.count()).toBe(0)
     expect(await db.accounts.count()).toBe(0)
