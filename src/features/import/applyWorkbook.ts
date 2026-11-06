@@ -7,7 +7,7 @@ import type { WorkbookPlan } from './parsers/workbook'
 
 export interface ApplyOptions {
   /** Which parts of the plan to write. */
-  include: { settings: boolean; budget: boolean; debts: boolean; pots: boolean; transactions: boolean }
+  include: { settings: boolean; budget: boolean; accounts: boolean; debts: boolean; pots: boolean; transactions: boolean }
   /** `fresh` erases existing budget data first; `merge` adds to / updates what exists. */
   mode: 'merge' | 'fresh'
   /** Account (by name) that receives the workbook's opening balance. */
@@ -51,6 +51,21 @@ export async function applyPlan(plan: WorkbookPlan, { include, mode, openingAcco
       for (const c of plan.categories) await ensureCategory(c.name, c.group, kinds.get(c.group) ?? 'expense', include.budget ? c.monthlyBudget : 0, c.notes)
     }
 
+    const accounts = new Map((await db.accounts.toArray()).map((a) => [k(a.name), a]))
+    // Accounts are created when asked for, and always when transactions need them. Type and opening balance only when asked.
+    async function ensureAccounts() {
+      for (const pa of plan.accounts) {
+        const existing = accounts.get(k(pa.name))
+        if (!existing) {
+          const a = { id: newId(), name: pa.name, kind: include.accounts ? pa.kind : undefined, openingBalance: include.accounts ? pa.openingBalance ?? 0 : 0 }
+          await db.accounts.add(a); accounts.set(k(pa.name), a)
+        } else if (include.accounts) {
+          await db.accounts.update(existing.id, { kind: pa.kind, ...(pa.openingBalance !== null ? { openingBalance: pa.openingBalance } : {}) })
+        }
+      }
+    }
+    if (include.accounts) await ensureAccounts()
+
     if (include.debts) {
       const existing = new Map((await db.debts.toArray()).map((d) => [k(d.name), d]))
       for (const d of plan.debts) {
@@ -71,10 +86,7 @@ export async function applyPlan(plan: WorkbookPlan, { include, mode, openingAcco
     }
 
     if (include.transactions) {
-      const accounts = new Map((await db.accounts.toArray()).map((a) => [k(a.name), a]))
-      for (const name of plan.accounts) {
-        if (!accounts.has(k(name))) { const a = { id: newId(), name, openingBalance: 0 }; await db.accounts.add(a); accounts.set(k(name), a) }
-      }
+      await ensureAccounts()
       const opening = openingAccount && accounts.get(k(openingAccount))
       if (opening && plan.openingBalance) await db.accounts.update(opening.id, { openingBalance: plan.openingBalance })
       const hashes = fingerprints(plan.transactions)

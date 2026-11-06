@@ -14,7 +14,7 @@ Log transactions or import bank statements, and the dashboard, budget, debt and 
 - **Home** – left to spend, pace check, what needs attention, and every category with how much is used and left.
 - **Activity** – transactions kept separate per account or card (with each account's balance), grouped by day; add / edit / search; remembers description → category.
 - **Statement import** – CSV or PDF from Discovery Bank, FNB, Capitec or any bank: preamble skipping, column mapping (remembered per layout), duplicate detection, per-row categorising. PDFs are read on-device (password-protected ones supported); scanned/image PDFs are not.
-- **Excel budget import** – upload an existing `.xlsx` tracker (Budget, Setup, Transactions, Debt, Savings and Cycles sheets are found by name and column headings). Preview first, tick what to import, safe to repeat without duplicates.
+- **Excel import for any workbook** – upload an existing `.xlsx` tracker. Tables are found by how they look (not by sheet names or position), classified by their headings and data, and combined when repeated (e.g. one tab per month). Handles bank fees, running-balance columns (used for opening balances), account types, savings goals, pay periods and holidays. Anything it can't tell, you can point at and map yourself. Preview first, safe to repeat without duplicates.
 - **Debt & Savings** – balances, interest/target, payoff and time-to-goal estimates driven by your budget.
 - **Stats** – a monthly summary (spent, in, saved, left over, where it went) plus a chart builder: columns, stacked, line or ranked bars; choose what to show, how to break it down, the range and account/category filters; every chart has a table view.
 - **Backup / restore** as JSON; installable and fully offline.
