@@ -3,7 +3,6 @@ import { useApp } from '@/app/AppContext'
 import { BudgetRow, GroupBlock, isActive } from '@/components/BudgetViews'
 import { CycleSwitcher, Empty, Page, Progress } from '@/components/ui'
 import { summarise } from '@/domain/budget/summary'
-import { ForecastCard } from '@/features/forecast/ForecastCard'
 import { useLedger } from '@/hooks/useLedger'
 import { daysBetween, todayISO } from '@/lib/dates'
 
@@ -45,8 +44,6 @@ export function Dashboard({ go }: { go: (tab: string) => void }) {
               {isCurrentCycle && <span>{daysLeft} day{daysLeft === 1 ? '' : 's'} left{ahead ? ' · ahead of pace' : ''}</span>}
             </div>
           </div>
-
-          {isCurrentCycle && <ForecastCard go={go} />}
 
           <div className="card grid2">
             <div className="stat"><span className="xs muted">Money in</span><b className="num good">{fmt(s.incomeActual)}</b><span className="xs muted">of {fmt(s.incomeBudget)} planned</span></div>

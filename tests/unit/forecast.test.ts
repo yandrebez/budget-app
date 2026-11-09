@@ -108,13 +108,17 @@ describe('forecast', () => {
     expect(f.limitedHistory).toBe(false)
   })
 
-  it('estimates everyday spending from this period\'s pace and what groceries usually cost', () => {
+  it('estimates habitual spending from this period\'s pace and what groceries usually cost', () => {
     // 3 shop trips of R400 so far (14 of 31 days); usually 6 trips = R2,400 a period.
+    const h = base(now, october, { basis: 'habits' })
     const pace = 3 * (17 / 14) * R(400)
     const usual = R(2400) - R(1200)
     const w = 14 / 31
-    expect(f.everydayPerDay).toBe(Math.round((w * pace + (1 - w) * usual) / 17))
-    expect(Math.abs(f.endBalance - (f.balanceNow - R(3000) - f.everydayPerDay * 17))).toBeLessThanOrEqual(17)
+    const food = h.lines.find((l) => l.categoryId === 'food')!
+    expect(Math.abs(food.habit - (w * pace + (1 - w) * usual))).toBeLessThanOrEqual(1)
+    expect(food.expected).toBe(food.habit)
+    expect(h.spendPerDay).toBe(Math.round(food.habit / 17))
+    expect(Math.abs(h.endBalance - (h.balanceNow - R(3000) - h.spendPerDay * 17))).toBeLessThanOrEqual(17)
   })
 
   it('is on track with room to save, and never suggests more than the lowest point allows', () => {
@@ -165,55 +169,54 @@ describe('forecast', () => {
 
   it('says how much less per day would avoid running short, when that is enough', () => {
     // Short only late in the month: cut a little each day
-    const need = base(now, october, { oneOff: f.endBalance + R(400) + f.everydayPerDay * 0 })
+    const need = base(now, october, { oneOff: f.endBalance + R(400) })
     expect(need.verdict).toBe('short')
     expect(need.cutPerDay).not.toBeNull()
     expect(need.cutIsEnough).toBe(true)
-    const after = base(now, october, { oneOff: f.endBalance + R(400), spendMultiplier: 1 - need.cutPerDay! / need.everydayPerDay })
+    const after = base(now, october, { oneOff: f.endBalance + R(400), spendMultiplier: 1 - need.cutPerDay! / need.spendPerDay })
     expect(after.minBalance).toBeGreaterThanOrEqual(-R(1))
   })
 
   it('what-if: spending less or leaving out a bill raises the end balance', () => {
     const less = base(now, october, { spendMultiplier: 0.5 })
-    expect(less.endBalance - f.endBalance).toBeCloseTo(f.everydayRemaining / 2, -2)
+    expect(less.endBalance - f.endBalance).toBeCloseTo(f.spendingLeft / 2, -2)
     const skip = base(now, october, { counted: { [f.events[0].id]: false } })
     expect(skip.endBalance - f.endBalance).toBe(R(3000))
     expect(skip.events[0].skipped).toBe(true)
   })
 
   it('does not turn a one-off purchase into a daily spending rate', () => {
-    // A single R2,000 repair in a category that has no pattern of repeating.
+    // A single R2,000 repair in a category that has no pattern of repeating (and whose R300 budget is long gone).
     const repair = base(now, [...october, tx('2026-10-14', 'gym', 0, 2000, 'Big repair')])
-    const gym = repair.everyday.find((e) => e.categoryId === 'gym')!
-    expect(gym).toMatchObject({ repeats: false, perDay: 0, wouldBe: 0, soFar: R(2000), count: 1 })
+    const gym = repair.lines.find((l) => l.categoryId === 'gym')!
+    expect(gym).toMatchObject({ habit: 0, budgetLeft: 0, expected: 0, spent: R(2300), count: 2 })
     // It already left the account, and nothing more is added for the rest of the period.
-    expect(repair.everydayPerDay).toBe(f.everydayPerDay)
+    expect(repair.spendingLeft).toBe(f.spendingLeft)
     expect(Math.abs(repair.endBalance - (f.endBalance - R(2000)))).toBeLessThanOrEqual(2)
   })
 
   it('one big shop inside a habitual category does not distort the pace', () => {
     const big = base(now, [...october, tx('2026-10-14', 'food', 0, 3000, 'Big shop')])
-    const food = big.everyday.find((e) => e.categoryId === 'food')!
+    const food = big.lines.find((l) => l.categoryId === 'food')!
     // Still bought regularly, but the expected size of a trip stays the usual R400, not R3,400.
-    expect(food.repeats).toBe(true)
-    expect(food.wouldBe * big.remaining).toBeLessThan(R(2500))
+    expect(food.habit).toBeGreaterThan(0)
+    expect(food.habit).toBeLessThan(R(2500))
   })
 
   it('expects the rest of what a twice-a-month category usually costs, not a multiple of one purchase', () => {
     const fuel = (d: string, a: number) => tx(d, 'fuel', 0, a, `Fuel ${d}`)
     // Two fill-ups a period of varying size, always R2,000 in total.
     const history2 = [fuel('2026-07-06', 500), fuel('2026-07-21', 1500), fuel('2026-08-06', 700), fuel('2026-08-21', 1300), fuel('2026-09-06', 1000), fuel('2026-09-21', 1000)]
-    const g = buildForecast({ cfg, today: now, accounts, categories, groups, txs: [...history, ...history2, ...october, fuel('2026-10-06', 800)] })!
-    const e = g.everyday.find((x) => x.categoryId === 'fuel')!
-    expect(e.repeats).toBe(true)
-    expect(Math.abs(e.wouldBe * g.remaining - R(1200))).toBeLessThanOrEqual(g.remaining) // R2,000 usual, R800 already spent
+    const g = buildForecast({ cfg, today: now, accounts, categories, groups, txs: [...history, ...history2, ...october, fuel('2026-10-06', 800)], whatIf: { basis: 'habits' } })!
+    const e = g.lines.find((x) => x.categoryId === 'fuel')!
+    expect(Math.abs(e.habit - R(1200))).toBeLessThanOrEqual(1) // R2,000 usual, R800 already spent
   })
 
   it('can leave a regular category out of the estimate', () => {
-    const food = f.everyday.find((e) => e.categoryId === 'food')!
+    const food = f.lines.find((l) => l.categoryId === 'food')!
     const off = base(now, october, { everydayOff: ['food'] })
-    expect(off.everyday.find((e) => e.categoryId === 'food')).toMatchObject({ off: true, perDay: 0, wouldBe: food.wouldBe })
-    expect(off.endBalance - f.endBalance).toBe(Math.round(f.everydayRemaining - off.everydayRemaining))
+    expect(off.lines.find((l) => l.categoryId === 'food')).toMatchObject({ off: true, expected: 0, wouldBe: food.wouldBe, habit: food.habit })
+    expect(Math.abs(off.endBalance - f.endBalance - (f.spendingLeft - off.spendingLeft))).toBeLessThanOrEqual(2)
   })
 
   it('flags categories heading over budget', () => {
@@ -233,8 +236,76 @@ describe('forecast', () => {
     const moves = ['2026-07-02', '2026-08-02', '2026-09-02', '2026-10-02'].flatMap((d) => [tx(d, 'move', 0, 700, 'Top up card', 'chq'), tx(d, 'move', 700, 0, 'Top up card', 'card')])
     const g = buildForecast({ cfg, today: now, accounts: two, categories, groups, txs: [...history, ...october, ...moves] })!
     expect(g.events.map((e) => e.label)).toEqual(['Medical aid'])
-    expect(g.everydayPerDay).toBe(f.everydayPerDay)
+    expect(g.spendPerDay).toBe(f.spendPerDay)
     expect(g.balanceNow).toBe(f.balanceNow)
+  })
+})
+
+describe('the budget', () => {
+  const now = '2026-10-14'
+  const october = month(2026, 10, 14, { gym: true, med: false })
+  const run = (whatIf = {}, extra: Transaction[] = [], cats: Category[] = categories, grps: Group[] = groups) =>
+    buildForecast({ cfg, today: now, accounts, categories: cats, groups: grps, txs: [...history, ...october, ...extra], whatIf })!
+
+  it('expects a budgeted category that has not been used yet to be spent, unless you go by habits alone', () => {
+    // Fuel has a R2,000 budget and no purchases at all.
+    const fuel = (b: 'cautious' | 'budget' | 'habits') => run({ basis: b }).lines.find((l) => l.categoryId === 'fuel')!
+    expect(fuel('habits')).toMatchObject({ spent: 0, habit: 0, budgetLeft: R(2000), expected: 0 })
+    expect(fuel('budget').expected).toBe(R(2000))
+    expect(fuel('cautious').expected).toBe(R(2000))
+  })
+
+  it('shows the end balance under each basis, cautious being the lowest', () => {
+    const f = run()
+    expect(f.ends.cautious).toBeLessThanOrEqual(f.ends.habits)
+    expect(f.ends.cautious).toBeLessThanOrEqual(f.ends.budget)
+    expect(f.ends.habits).toBeGreaterThan(f.ends.budget) // the plan expects the unused fuel budget to be spent
+    expect(run({ basis: 'budget' }).endBalance).toBe(f.ends.budget)
+    expect(run({ basis: 'habits' }).endBalance).toBe(f.ends.habits)
+  })
+
+  it('leaving a bill out removes the payment without bringing its budget back', () => {
+    const med = run().events.find((e) => e.label === 'Medical aid')!
+    const without = run({ counted: { [med.id]: false } })
+    expect(without.lines.find((l) => l.categoryId === 'med')).toMatchObject({ budgetLeft: 0, expected: 0 })
+    expect(without.endBalance - run().endBalance).toBe(R(3000))
+  })
+
+  it('does not count a bill twice when it is both in the budget and still to come', () => {
+    const med = run().lines.find((l) => l.categoryId === 'med')!
+    expect(run().events.map((e) => e.label)).toContain('Medical aid')
+    expect(med).toMatchObject({ budget: R(3000), spent: 0, budgetLeft: 0, expected: 0 })
+  })
+
+  it('subtracts what is already spent, including bills, from the budget', () => {
+    const food = run().lines.find((l) => l.categoryId === 'food')!
+    expect(food.budgetLeft).toBe(R(2400) - R(1200))
+  })
+
+  it('lists spending in a category that has no budget, but does not repeat it', () => {
+    const cats: Category[] = [...categories, { id: 'gift', name: 'Gifts', groupId: 'ge', monthlyBudget: 0 }]
+    const g = run({}, [tx('2026-10-12', 'gift', 0, 500, 'Birthday gift')], cats)
+    expect(g.lines.find((l) => l.name === 'Gifts')).toMatchObject({ budget: 0, spent: R(500), budgetLeft: 0, habit: 0, expected: 0 })
+  })
+
+  it('expects an unpaid budgeted loan or savings amount, which habits alone would miss', () => {
+    const cats: Category[] = [...categories, { id: 'card', name: 'Store card', groupId: 'gd', monthlyBudget: R(1000) }, { id: 'ef', name: 'Emergency fund', groupId: 'gs', monthlyBudget: R(2000) }]
+    const grps: Group[] = [...groups, { id: 'gs', name: 'Savings', kind: 'savings', order: 4 }]
+    const g = run({ basis: 'budget' }, [], cats, grps)
+    expect(g.lines.find((l) => l.name === 'Store card')).toMatchObject({ kind: 'debt', budgetLeft: R(1000), expected: R(1000) })
+    expect(g.lines.find((l) => l.name === 'Emergency fund')).toMatchObject({ kind: 'savings', expected: R(2000) })
+    expect(run({ basis: 'habits' }, [], cats, grps).lines.find((l) => l.name === 'Store card')?.expected).toBe(0)
+  })
+
+  it('does not assume money kept as a buffer will be spent', () => {
+    const cats: Category[] = [...categories, { id: 'buf', name: 'Buffer / unspent', groupId: 'ge', monthlyBudget: R(500) }]
+    expect(run({}, [], cats).lines.find((l) => l.name === 'Buffer / unspent')).toMatchObject({ budget: R(500), budgetLeft: 0, expected: 0, kept: true })
+  })
+
+  it('ignores income and transfer budgets as spending', () => {
+    const names = run().lines.map((l) => l.name)
+    expect(names).not.toContain('Pay')
+    expect(names).not.toContain('Move')
   })
 })
 
@@ -242,14 +313,14 @@ describe('with little history', () => {
   it('does not repeat a lone purchase for a new user either', () => {
     const only = [tx('2026-10-01', 'pay', 20000, 0, 'Salary ACME'), tx('2026-10-05', 'gym', 0, 2000, 'Big repair')]
     const f = buildForecast({ cfg, today: '2026-10-05', accounts, categories, groups, txs: only })!
-    expect(f.everyday.find((e) => e.categoryId === 'gym')).toMatchObject({ repeats: false, perDay: 0 })
+    expect(f.lines.find((l) => l.categoryId === 'gym')).toMatchObject({ habit: 0, expected: 0 })
   })
   it('leans on the budget and says so', () => {
     const only = [tx('2026-10-01', 'pay', 20000, 0, 'Salary ACME'), tx('2026-10-02', 'food', 0, 400, 'Shop')]
     const f = buildForecast({ cfg, today: '2026-10-02', accounts, categories, groups, txs: only })!
     expect(f.limitedHistory).toBe(true)
     expect(f.events).toEqual([])
-    expect(f.everydayPerDay).toBeGreaterThan(0)
+    expect(f.spendingLeft).toBeGreaterThan(0) // the budget guides when there is no history
   })
   it('works on the last day of a period and with no spending accounts', () => {
     const last = buildForecast({ cfg, today: '2026-10-31', accounts, categories, groups, txs: [...history, ...month(2026, 10), tx('2026-10-31', 'food', 0, 50, 'Last shop')] })!
