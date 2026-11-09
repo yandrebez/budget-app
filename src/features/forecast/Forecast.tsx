@@ -113,25 +113,35 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
               <span><span className="title" style={{ display: 'block' }}>Everyday spending</span><span className="xs muted">about {fmt(f.everydayPerDay)} a day for {f.remaining} more days</span></span>
               <span className="amount">{money(-f.everydayRemaining)}</span>
             </div>
-            {f.everyday.length > 0 && (
-              <details className="item" style={{ cursor: 'default' }}>
-                <summary className="xs muted" style={{ cursor: 'pointer' }}>What's in it. Untick a one-off, like a car repair, to leave it out</summary>
-                <div style={{ marginTop: 6 }}>
-                  {f.everyday.slice(0, 10).map((e) => {
-                    const id = e.categoryId ?? '__none__'
-                    return (
-                      <label key={id} className="row between small" style={{ flexDirection: 'row', color: 'var(--text)', padding: '6px 0', opacity: e.off ? 0.5 : 1 }}>
-                        <span className="row" style={{ gap: 8 }}>
-                          <input type="checkbox" aria-label={`Count ${e.name} in everyday spending`} checked={!e.off} onChange={(ev) => setEverydayOff(ev.target.checked ? everydayOff.filter((x) => x !== id) : [...everydayOff, id])} />
-                          <span>{e.name}</span>
-                        </span>
-                        <span className="num muted">≈ {fmt(e.wouldBe)}/day · {fmt(e.soFar)} so far</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </details>
-            )}
+            {f.everyday.length > 0 && (() => {
+              const regular = f.everyday.filter((e) => e.repeats || e.off)
+              const oneOffs = f.everyday.filter((e) => !e.repeats && !e.off && e.soFar > 0)
+              return (
+                <details className="item" style={{ cursor: 'default' }}>
+                  <summary className="xs muted" style={{ cursor: 'pointer' }}>What's in it, and what was left out</summary>
+                  <div style={{ marginTop: 6 }}>
+                    {regular.slice(0, 8).map((e) => {
+                      const id = e.categoryId ?? '__none__'
+                      return (
+                        <label key={id} className="row between small" style={{ flexDirection: 'row', color: 'var(--text)', padding: '6px 0', opacity: e.off ? 0.5 : 1 }}>
+                          <span className="row" style={{ gap: 8 }}>
+                            <input type="checkbox" aria-label={`Count ${e.name} in everyday spending`} checked={!e.off} onChange={(ev) => setEverydayOff(ev.target.checked ? everydayOff.filter((x) => x !== id) : [...everydayOff, id])} />
+                            <span>{e.name}</span>
+                          </span>
+                          <span className="num muted">≈ {fmt(e.wouldBe)}/day · {fmt(e.soFar)} so far</span>
+                        </label>
+                      )
+                    })}
+                    {regular.length > 8 && <p className="xs muted" style={{ margin: '4px 0 0' }}>and {regular.length - 8} smaller ones.</p>}
+                    {oneOffs.length > 0 && (
+                      <p className="xs muted" style={{ margin: '8px 0 0' }}>
+                        <b>Not repeated:</b> {oneOffs.map((e) => `${e.name} ${fmt(e.soFar)}`).join(' · ')}. These look like one-offs, so they are already in your balance but are not expected again.
+                      </p>
+                    )}
+                  </div>
+                </details>
+              )
+            })()}
           </div>
 
           {f.risks.length > 0 && (
@@ -166,7 +176,7 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
         <summary className="small muted" style={{ cursor: 'pointer' }}>How this is worked out</summary>
         <div className="small muted stack" style={{ marginTop: 8 }}>
           <p style={{ margin: 0 }}>It starts from what is in your spending accounts today (savings accounts are not counted). Payments that showed up about once in each of your last few periods, at a similar amount, are treated as bills or pay and placed on their usual day. Bills that haven't happened yet are subtracted; ones that look late are assumed tomorrow.</p>
-          <p style={{ margin: 0 }}>Everyday spending (groceries, fuel, eating out and so on) uses your pace so far this period, mixed with your usual pace from earlier periods early on. The shaded band shows everyday spending running 25% higher or lower.</p>
+          <p style={{ margin: 0 }}>Everyday spending (groceries, fuel, eating out and so on) is worked out per category. Two guides are blended, with more weight on this period's pace the further through the period you are: what that category usually costs in a period (less what you've already spent), and this period's pace (only when there are at least three purchases). A category with fewer than three purchases and no history of repeating, such as a repair or a gift, is treated as a one-off and is not repeated. The shaded band shows everyday spending running 25% higher or lower.</p>
           <p style={{ margin: 0 }}>It is an estimate. A one-off expense, a late salary or a bill that isn't regular won't be seen coming, so use the checkboxes and "What if?" to test them.</p>
         </div>
       </details>

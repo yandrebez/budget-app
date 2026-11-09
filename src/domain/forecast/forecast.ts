@@ -2,14 +2,14 @@ import type { Account, Category, Group, ISODate, Transaction } from '@/types'
 import { addDays, daysBetween } from '@/lib/dates'
 import { isSpendingAccount } from '@/domain/balances/balances'
 import { cycleContaining, shiftCycle, type Cycle, type CycleConfig } from '@/domain/cycles/cycle'
-import { detectRecurring, internalTransfers, matches } from './recurring'
+import { detectRecurring, internalTransfers, matches, median } from './recurring'
 
 /** How many earlier periods are used to learn what is "normal". */
 const HISTORY_PERIODS = 4
 /** An earlier period that started more than this many days before the data began is too incomplete to learn from. */
 const PARTIAL_DAYS = 7
-/** After this many days into a period, this period's own pace is trusted fully. */
-const TRUST_DAYS = 10
+/** Fewer purchases than this in a category say nothing about a pattern, so a lone purchase is never extrapolated. */
+const MIN_PATTERN = 3
 /** Likely range: everyday spending this much higher or lower than expected. */
 const SCENARIO = 0.25
 /** Keep a cushion of this many days of everyday spending before calling money "free to save". */
@@ -79,7 +79,7 @@ export interface Forecast {
   everydayPerDay: number
   everydayRemaining: number
   /** What the everyday estimate is made of, largest first (per day, cents). */
-  everyday: { categoryId: string | null; name: string; perDay: number; soFar: number; off: boolean; wouldBe: number }[]
+  everyday: { categoryId: string | null; name: string; perDay: number; wouldBe: number; soFar: number; count: number; off: boolean; repeats: boolean }[]
   endBalance: number
   endRange: { low: number; high: number }
   minBalance: number
@@ -163,35 +163,56 @@ export function buildForecast(input: ForecastInput): Forecast | null {
   events.sort((a, b) => a.date.localeCompare(b.date))
   const active = events.filter((e) => !e.skipped)
 
-  /* everyday spending, category by category: this period's pace blended with what is usual */
+  /*
+   * Everyday spending, category by category. Two views are blended, weighted by how much of the period has passed:
+   *  - this period's pace: purchases so far, stretched over the days left, at the median purchase size (only with
+   *    three or more purchases, so a lone repair or gift is never extrapolated);
+   *  - what the category usually costs per period, less what is already spent (the stable guide for things bought once or twice a month).
+   */
   const isEveryday = (t: Transaction) => !t.categoryId || kindOf.get(t.categoryId) === 'expense'
   const bucket = (t: Transaction) => t.categoryId ?? '__none__'
   const spend = (t: Transaction) => t.moneyOut - t.moneyIn
-  const soFar = new Map<string, number>()
-  for (const t of current) if (isEveryday(t) && !usedTx.has(t.id)) soFar.set(bucket(t), (soFar.get(bucket(t)) ?? 0) + spend(t))
-  const usual = new Map<string, number>()
-  for (const c of priors) {
+  interface Stat { soFar: number; n: number; amounts: number[]; priorTotals: number[] }
+  const stats = new Map<string, Stat>()
+  const stat = (id: string): Stat => stats.get(id) ?? stats.set(id, { soFar: 0, n: 0, amounts: [], priorTotals: priors.map(() => 0) }).get(id)!
+  for (const t of current) {
+    if (!isEveryday(t) || usedTx.has(t.id)) continue
+    const st = stat(bucket(t))
+    st.soFar += spend(t)
+    if (spend(t) > 0) { st.n++; st.amounts.push(spend(t)) }
+  }
+  priors.forEach((c, i) => {
     for (const t of relevant) {
-      if (t.date < c.start || t.date > c.end || !isEveryday(t) || items.some((i) => matches(i, t))) continue
-      usual.set(bucket(t), (usual.get(bucket(t)) ?? 0) + spend(t))
+      if (t.date < c.start || t.date > c.end || !isEveryday(t) || items.some((it) => matches(it, t))) continue
+      const st = stat(bucket(t))
+      st.priorTotals[i] += spend(t)
+      if (spend(t) > 0) st.amounts.push(spend(t))
     }
+  })
+  for (const c of categories) if (kindOf.get(c.id) === 'expense' && c.monthlyBudget > 0) stat(c.id)
+
+  // The more of the period has passed, the more this period's own pace counts.
+  const w = elapsed / total
+  const wouldSpend = new Map<string, number>()
+  for (const [id, st] of stats) {
+    const budget = catById.get(id)?.monthlyBudget ?? 0
+    let left = 0
+    if (remaining > 0) {
+      if (priors.length === 0 && st.n < MIN_PATTERN) {
+        // No history and too few purchases to see a pattern: let the budget guide, if there is one.
+        left = Math.max(0, budget - st.soFar) * (remaining / total)
+      } else {
+        const hist = priors.length ? Math.max(0, median(st.priorTotals) - st.soFar) : null
+        const pace = st.n >= MIN_PATTERN ? st.n * (remaining / elapsed) * median(st.amounts) : null
+        left = pace !== null && hist !== null ? w * pace + (1 - w) * hist : pace ?? hist ?? 0
+      }
+    }
+    wouldSpend.set(id, left)
   }
   const off = new Set(whatIf.everydayOff ?? [])
-  const everydayCats = new Set<string>([...soFar.keys(), ...usual.keys()])
-  for (const c of categories) if (kindOf.get(c.id) === 'expense' && c.monthlyBudget > 0) everydayCats.add(c.id)
-  const w = Math.min(1, elapsed / TRUST_DAYS)
-  const rate = new Map<string, number>()
-  const wouldBe = new Map<string, number>()
-  for (const id of everydayCats) {
-    const budget = catById.get(id)?.monthlyBudget ?? 0
-    // With no history at all, the budget is the best guide to what is normal.
-    const usualDaily = priors.length ? (usual.get(id) ?? 0) / priors.length / total : budget / total
-    const raw = Math.max(0, w * ((soFar.get(id) ?? 0) / elapsed) + (1 - w) * usualDaily)
-    wouldBe.set(id, raw)
-    rate.set(id, off.has(id) ? 0 : raw)
-  }
+  const countedSpend = (id: string) => (off.has(id) ? 0 : wouldSpend.get(id) ?? 0)
   const mult = whatIf.spendMultiplier ?? 1
-  const baseDaily = sum([...rate.values()])
+  const baseDaily = remaining > 0 ? sum([...wouldSpend.keys()].map(countedSpend)) / remaining : 0
   const everydayPerDay = baseDaily * mult
 
   /* balance so far */
@@ -249,15 +270,17 @@ export function buildForecast(input: ForecastInput): Forecast | null {
     if (kindOf.get(c.id) !== 'expense' || c.monthlyBudget <= 0) continue
     const spentAll = sum(current.filter((t) => t.categoryId === c.id).map(spend))
     const pending = sum(active.filter((e) => e.kind === 'bill' && items.some((i) => i.key === e.id && i.categoryId === c.id)).map((e) => -e.amount))
-    const projected = Math.round(spentAll + pending + (rate.get(c.id) ?? 0) * mult * remaining)
+    const projected = Math.round(spentAll + pending + countedSpend(c.id) * mult)
     if (projected > c.monthlyBudget * 1.05) risks.push({ categoryId: c.id, name: c.name, projected, budget: c.monthlyBudget, over: projected - c.monthlyBudget })
   }
   risks.sort((a, b) => b.over - a.over)
 
-  const everyday = [...rate].map(([id, r]) => ({
+  const perDayOf = (spendLeft: number) => (remaining > 0 ? (spendLeft / remaining) * mult : 0)
+  const everyday = [...stats].map(([id, st]) => ({
     categoryId: id === '__none__' ? null : id, name: id === '__none__' ? 'Uncategorised' : catById.get(id)?.name ?? 'Other',
-    perDay: Math.round(r * mult), soFar: Math.round(soFar.get(id) ?? 0), off: off.has(id), wouldBe: Math.round((wouldBe.get(id) ?? 0) * mult),
-  })).filter((e) => e.wouldBe > 0).sort((a, b) => b.wouldBe - a.wouldBe)
+    perDay: Math.round(perDayOf(countedSpend(id))), wouldBe: Math.round(perDayOf(wouldSpend.get(id) ?? 0)),
+    soFar: Math.round(st.soFar), count: st.n, off: off.has(id), repeats: (wouldSpend.get(id) ?? 0) > 0,
+  })).filter((e) => e.wouldBe > 0 || e.soFar > 0).sort((a, b) => b.wouldBe - a.wouldBe || b.soFar - a.soFar)
 
   return {
     start, end, asOf, today, staleDays: daysBetween(asOf, today), elapsed, total, remaining, balanceNow, history, projection, lowPath, highPath, events,
