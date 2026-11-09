@@ -3,7 +3,7 @@ import { useApp } from '@/app/AppContext'
 import { ForecastChart } from '@/components/charts/ForecastChart'
 import { Legend } from '@/components/charts/shared'
 import { Chips, Empty, MoneyInput, Page } from '@/components/ui'
-import type { WhatIf } from '@/domain/forecast/forecast'
+import type { Basis, SpendLine, WhatIf } from '@/domain/forecast/forecast'
 import { compactNumber, dayMonth } from '@/lib/format'
 import { useForecast } from './useForecast'
 import { VERDICT } from './verdict'
@@ -13,17 +13,27 @@ const SPEND: { value: number; label: string }[] = [
   { value: 1, label: 'As usual' }, { value: 1.1, label: '+10%' }, { value: 1.2, label: '+20%' },
 ]
 
+const BASES: { value: Basis; label: string; note: string }[] = [
+  { value: 'cautious', label: 'Budget & habits', note: 'For each category, whichever is higher: what is left of its budget, or what you usually spend. The careful view.' },
+  { value: 'budget', label: 'My budget', note: 'You spend what is left of every budget, and nothing more. Categories with no budget add nothing.' },
+  { value: 'habits', label: 'My habits', note: 'What you usually spend, from your earlier periods and this one, ignoring your budget.' },
+]
+
+const key = (l: SpendLine) => l.categoryId ?? '__none__'
+
 export function Forecast({ back, go }: { back?: { label: string; onClick: () => void }; go: (tab: string) => void }) {
   const { fmt, settings } = useApp()
+  const [basis, setBasis] = useState<Basis>('cautious')
   const [mult, setMult] = useState(1)
   const [oneOff, setOneOff] = useState(0)
   const [counted, setCounted] = useState<Record<string, boolean>>({})
-  const [everydayOff, setEverydayOff] = useState<string[]>([])
-  const whatIf = useMemo<WhatIf>(() => ({ spendMultiplier: mult, oneOff, counted, everydayOff }), [mult, oneOff, counted, everydayOff])
+  const [leftOut, setLeftOut] = useState<string[]>([])
+  const whatIf = useMemo<WhatIf>(() => ({ basis, spendMultiplier: mult, oneOff, counted, everydayOff: leftOut }), [basis, mult, oneOff, counted, leftOut])
+  const plain = useMemo<WhatIf>(() => ({ basis }), [basis])
   const f = useForecast(whatIf)
-  const base = useForecast()
+  const base = useForecast(plain)
   const d = (iso: string) => dayMonth(iso, settings.locale)
-  const changed = mult !== 1 || oneOff > 0 || Object.keys(counted).length > 0 || everydayOff.length > 0
+  const changed = mult !== 1 || oneOff > 0 || Object.keys(counted).length > 0 || leftOut.length > 0
 
   if (!f || !base) {
     return (
@@ -35,6 +45,7 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
   const v = VERDICT[f.verdict]
   const delta = f.endBalance - base.endBalance
   const money = (c: number) => `${c < 0 ? '−' : '+'}${fmt(Math.abs(c))}`
+  const note = BASES.find((b) => b.value === basis)!.note
 
   const headline = f.remaining === 0
     ? <>The period ends today. Your balance is <b className="num">{fmt(f.balanceNow)}</b>.</>
@@ -43,6 +54,15 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
       : f.verdict === 'tight'
         ? <>Only about <b className="num">{fmt(f.endBalance)}</b> left at the end.</>
         : <>About <b className="num">{fmt(f.endBalance)}</b> left at the end of the period.</>
+
+  // What the lines say, split the ways a budget is read.
+  const expectedLines = f.lines.filter((l) => l.wouldBe > 0)
+  const unbudgeted = f.lines.filter((l) => l.budget === 0 && l.spent > 0)
+  const unused = f.lines.filter((l) => l.budget > 0 && l.spent <= 0)
+  const spread = Math.abs(f.ends.budget - f.ends.habits) > 100
+
+  const lineNote = (l: SpendLine) =>
+    l.budget > 0 ? `budget ${fmt(l.budget)} · ${l.spent > 0 ? `spent ${fmt(l.spent)}` : 'not used yet'}` : `no budget · spent ${fmt(l.spent)}`
 
   return (
     <Page title="Forecast" back={back}>
@@ -55,8 +75,18 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
             {f.minBalance < f.balanceNow && <> Lowest point <b className="num">{fmt(f.minBalance)}</b> on {d(f.minDate)}.</>}
           </p>
         )}
+        {f.remaining > 0 && spread && (
+          <p className="small muted" style={{ margin: '8px 0 0' }}>
+            Spend what is left of every budget: about <b className="num">{fmt(f.ends.budget)}</b>. Go by your habits alone: about <b className="num">{fmt(f.ends.habits)}</b>.
+          </p>
+        )}
         {f.staleDays > 0 && f.remaining > 0 && <p className="xs muted" style={{ margin: '8px 0 0' }}>Based on your transactions up to {d(f.asOf)}. The {f.staleDays} day{f.staleDays === 1 ? '' : 's'} since are forecast, so adding them will sharpen this.</p>}
-        {f.limitedHistory && <p className="xs warn" style={{ margin: '8px 0 0' }}>Not much history yet, so this leans on your budget and this period only. It gets sharper after a few months of transactions.</p>}
+        {f.limitedHistory && <p className="xs warn" style={{ margin: '8px 0 0' }}>Not much history yet, so habits are guessed from this period only. Your budget fills the gap.</p>}
+      </div>
+
+      <div className="card">
+        <Chips caption label="Based on" value={basis} onChange={setBasis} options={BASES.map((b) => ({ value: b.value, label: b.label }))} />
+        <p className="xs muted" style={{ margin: 0 }}>{note}</p>
       </div>
 
       {f.remaining > 0 && (
@@ -66,8 +96,8 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
             <p style={{ margin: 0 }}>
               Not this month as things stand.{' '}
               {f.cutPerDay !== null && f.cutIsEnough
-                ? <>Spending about <b className="num">{fmt(f.cutPerDay)}</b> less per day on everyday things (about {fmt(Math.max(0, f.everydayPerDay - f.cutPerDay))} instead of {fmt(f.everydayPerDay)}) would keep you above zero.</>
-                : <>Even with no everyday spending your expected payments are bigger than your balance. Moving money back from savings, or leaving out a payment below that isn't really due, would help.</>}
+                ? <>Spending about <b className="num">{fmt(f.cutPerDay)}</b> a day less than expected on the categories below would keep you above zero.</>
+                : <>Even with no spending beyond your bills you would be short: what is expected is bigger than your balance. Moving money back from savings, leaving out a payment below that isn't really due, or switching a category off would help.</>}
             </p>
           ) : (
             <p style={{ margin: 0 }}>
@@ -77,7 +107,7 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
             </p>
           )}
           <p className="small muted" style={{ margin: 0 }}>
-            Safe to spend about <b className="num">{fmt(f.safeDaily)}</b> a day on everyday things. You're averaging <b className="num">{fmt(f.everydayPerDay)}</b>. Savings transfers you make regularly are already counted.
+            After your bills, you could spend about <b className="num">{fmt(f.safeDaily)}</b> a day in total on everything else and stay above zero. Savings transfers you make regularly are already counted.
           </p>
         </div>
       )}
@@ -110,62 +140,73 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
               </label>
             ))}
             <div className="item row between">
-              <span><span className="title" style={{ display: 'block' }}>Everyday spending</span><span className="xs muted">about {fmt(f.everydayPerDay)} a day for {f.remaining} more days</span></span>
-              <span className="amount">{money(-f.everydayRemaining)}</span>
+              <span><span className="title" style={{ display: 'block' }}>Other spending expected</span><span className="xs muted">{expectedLines.filter((l) => !l.off).length} categories, by category rather than a daily average</span></span>
+              <span className="amount">{money(-f.spendingLeft)}</span>
             </div>
-            {f.everyday.length > 0 && (() => {
-              const regular = f.everyday.filter((e) => e.repeats || e.off)
-              const oneOffs = f.everyday.filter((e) => !e.repeats && !e.off && e.soFar > 0)
-              return (
-                <details className="item" style={{ cursor: 'default' }}>
-                  <summary className="xs muted" style={{ cursor: 'pointer' }}>What's in it, and what was left out</summary>
-                  <div style={{ marginTop: 6 }}>
-                    {regular.slice(0, 8).map((e) => {
-                      const id = e.categoryId ?? '__none__'
-                      return (
-                        <label key={id} className="row between small" style={{ flexDirection: 'row', color: 'var(--text)', padding: '6px 0', opacity: e.off ? 0.5 : 1 }}>
-                          <span className="row" style={{ gap: 8 }}>
-                            <input type="checkbox" aria-label={`Count ${e.name} in everyday spending`} checked={!e.off} onChange={(ev) => setEverydayOff(ev.target.checked ? everydayOff.filter((x) => x !== id) : [...everydayOff, id])} />
-                            <span>{e.name}</span>
-                          </span>
-                          <span className="num muted">≈ {fmt(e.wouldBe)}/day · {fmt(e.soFar)} so far</span>
-                        </label>
-                      )
-                    })}
-                    {regular.length > 8 && <p className="xs muted" style={{ margin: '4px 0 0' }}>and {regular.length - 8} smaller ones.</p>}
-                    {oneOffs.length > 0 && (
-                      <p className="xs muted" style={{ margin: '8px 0 0' }}>
-                        <b>Not repeated:</b> {oneOffs.map((e) => `${e.name} ${fmt(e.soFar)}`).join(' · ')}. These look like one-offs, so they are already in your balance but are not expected again.
-                      </p>
-                    )}
-                  </div>
-                </details>
-              )
-            })()}
+            {expectedLines.length > 0 && (
+              <details className="item" style={{ cursor: 'default' }} open>
+                <summary className="xs muted" style={{ cursor: 'pointer' }}>By category. Untick one you don't expect to spend in</summary>
+                <div style={{ marginTop: 6 }}>
+                  {expectedLines.slice(0, 12).map((l) => (
+                    <label key={key(l)} className="row between small" style={{ flexDirection: 'row', color: 'var(--text)', padding: '6px 0', opacity: l.off ? 0.5 : 1, alignItems: 'flex-start' }}>
+                      <span className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+                        <input type="checkbox" style={{ marginTop: 3 }} aria-label={`Count ${l.name} in expected spending`} checked={!l.off} onChange={(ev) => setLeftOut(ev.target.checked ? leftOut.filter((x) => x !== key(l)) : [...leftOut, key(l)])} />
+                        <span><span style={{ display: 'block' }}>{l.name}</span><span className="xs muted">{lineNote(l)}</span></span>
+                      </span>
+                      <span className="num amount">{money(-Math.round(l.wouldBe * mult))}</span>
+                    </label>
+                  ))}
+                  {expectedLines.length > 12 && <p className="xs muted" style={{ margin: '4px 0 0' }}>and {expectedLines.length - 12} smaller ones.</p>}
+                </div>
+              </details>
+            )}
           </div>
 
-          {f.risks.length > 0 && (
+          {(f.risks.length > 0 || unbudgeted.length > 0 || unused.length > 0) && (
             <>
-              <h2>Watch out</h2>
-              <div className="card flush">
-                {f.risks.map((r) => (
-                  <div className="item row between" key={r.categoryId ?? 'none'} style={{ cursor: 'default' }}>
-                    <span><span className="title" style={{ display: 'block' }}>{r.name}</span><span className="xs muted">on course for {fmt(r.projected)} against a {fmt(r.budget)} budget</span></span>
-                    <span className="amount bad">{fmt(r.over)} over</span>
+              <h2>Against your budget</h2>
+              <div className="card stack">
+                {f.risks.length > 0 && (
+                  <div>
+                    <b className="small">On course to go over</b>
+                    {f.risks.map((r) => (
+                      <div className="row between small" key={r.categoryId ?? 'none'} style={{ padding: '6px 0' }}>
+                        <span>{r.name}<span className="xs muted" style={{ display: 'block' }}>{fmt(r.projected)} against a {fmt(r.budget)} budget</span></span>
+                        <b className="num bad">{fmt(r.over)} over</b>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+                {unbudgeted.length > 0 && (
+                  <div>
+                    <b className="small">Spent, but not in your budget</b>
+                    <p className="xs muted" style={{ margin: '2px 0 4px' }}>Already out of your balance. Not expected again unless it becomes a habit. Add a budget for these to plan for them.</p>
+                    {unbudgeted.map((l) => (
+                      <div className="row between small" key={key(l)} style={{ padding: '4px 0' }}><span>{l.name}</span><b className="num">{fmt(l.spent)}</b></div>
+                    ))}
+                  </div>
+                )}
+                {unused.length > 0 && (
+                  <div>
+                    <b className="small">In your budget, not used yet</b>
+                    <p className="xs muted" style={{ margin: '2px 0 4px' }}>{basis === 'habits' ? 'Not counted, because you are going by habits alone.' : 'Counted as likely to be spent before the period ends. Untick a category above if you won\'t.'}</p>
+                    {unused.map((l) => (
+                      <div className="row between small" key={key(l)} style={{ padding: '4px 0' }}><span>{l.name}{l.kept && <span className="xs muted"> · kept in the account, not counted</span>}</span><span className="num muted">{fmt(l.budget)} budgeted</span></div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}
 
           <h2>What if?</h2>
           <div className="card stack">
-            <Chips caption label="Everyday spending" value={mult} onChange={setMult} options={SPEND} />
+            <Chips caption label="Spending still to come" value={mult} onChange={setMult} options={SPEND} />
             <label>One-off expense tomorrow<MoneyInput label="One-off expense" value={oneOff} onChange={setOneOff} /></label>
             {changed && (
               <div className="row between small">
                 <span>{delta === 0 ? 'No change to the end balance.' : <>End balance <b className={`num ${delta > 0 ? 'good' : 'bad'}`}>{money(delta)}</b> compared with the usual forecast.</>}</span>
-                <button className="link" onClick={() => { setMult(1); setOneOff(0); setCounted({}); setEverydayOff([]) }}>Reset</button>
+                <button className="link" onClick={() => { setMult(1); setOneOff(0); setCounted({}); setLeftOut([]) }}>Reset</button>
               </div>
             )}
           </div>
@@ -175,9 +216,9 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
       <details>
         <summary className="small muted" style={{ cursor: 'pointer' }}>How this is worked out</summary>
         <div className="small muted stack" style={{ marginTop: 8 }}>
-          <p style={{ margin: 0 }}>It starts from what is in your spending accounts today (savings accounts are not counted). Payments that showed up about once in each of your last few periods, at a similar amount, are treated as bills or pay and placed on their usual day. Bills that haven't happened yet are subtracted; ones that look late are assumed tomorrow.</p>
-          <p style={{ margin: 0 }}>Everyday spending (groceries, fuel, eating out and so on) is worked out per category. Two guides are blended, with more weight on this period's pace the further through the period you are: what that category usually costs in a period (less what you've already spent), and this period's pace (only when there are at least three purchases). A category with fewer than three purchases and no history of repeating, such as a repair or a gift, is treated as a one-off and is not repeated. The shaded band shows everyday spending running 25% higher or lower.</p>
-          <p style={{ margin: 0 }}>It is an estimate. A one-off expense, a late salary or a bill that isn't regular won't be seen coming, so use the checkboxes and "What if?" to test them.</p>
+          <p style={{ margin: 0 }}>It starts from what is in your spending accounts at your last entry (savings accounts are not counted). Payments that showed up about once in each of your last few periods, in the same category at a similar amount, are treated as bills or pay and placed on their usual day. Bills that haven't happened yet are subtracted; ones a few days late are assumed to come next day, and ones more than a week overdue start switched off.</p>
+          <p style={{ margin: 0 }}>Everything else is worked out per category, then added up. <b>Budget:</b> what is left of the category's budget after what you've spent and any bill still due in it (this includes loan and savings amounts you haven't paid yet; money meant to stay in the account, such as a "buffer", is not assumed to be spent). <b>Habits:</b> a blend of what the category usually costs per period and this period's pace, which needs at least three purchases so a lone repair or gift is never repeated. <b>Budget &amp; habits</b> takes the higher of the two for each category.</p>
+          <p style={{ margin: 0 }}>The money is spread evenly over the days left only to draw the line. The shaded band shows spending 25% higher or lower. It is an estimate: a late salary, a one-off expense or an irregular bill won't be seen coming, so use the tick boxes and "What if?" to test them.</p>
         </div>
       </details>
     </Page>
