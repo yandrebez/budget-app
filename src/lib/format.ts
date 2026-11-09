@@ -22,3 +22,7 @@ export function niceTicks(min: number, max: number, count = 4): number[] {
   for (let v = Math.floor(lo / step) * step; v <= Math.ceil(hi / step) * step + 1e-9; v += step) ticks.push(Math.round(v))
   return ticks
 }
+
+/** "20 Nov" */
+export const dayMonth = (iso: string, locale: string): string =>
+  new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`))

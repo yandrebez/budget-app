@@ -12,6 +12,7 @@ import { Debt } from '@/features/debt/Debt'
 import { Savings } from '@/features/savings/Savings'
 import { Import } from '@/features/import/Import'
 import { Settings } from '@/features/settings/Settings'
+import { Forecast } from '@/features/forecast/Forecast'
 import { Onboarding } from '@/features/onboarding/Onboarding'
 import { AppProvider } from './AppContext'
 
@@ -25,7 +26,7 @@ const TABS: { id: string; label: string; icon: ReactElement }[] = [
   { id: 'stats', label: 'Stats', icon: icon('M4 20V10M10 20V4M16 20v-7M22 20H2') },
   { id: 'more', label: 'More', icon: icon('M5 12h.01M12 12h.01M19 12h.01') },
 ]
-const SUB = ['debt', 'savings', 'import', 'settings']
+const SUB = ['forecast', 'debt', 'savings', 'import', 'settings']
 const ROUTES = [...TABS.map((t) => t.id), ...SUB]
 
 const fromHash = () => {
@@ -55,7 +56,7 @@ export function App() {
   const back = { label: 'More', onClick: () => go('more') }
   const screens: Record<string, ReactElement> = {
     dashboard: <Dashboard go={go} />, transactions: <Transactions go={go} />, budget: <Budget />, stats: <Stats />, more: <More go={go} />,
-    debt: <Debt back={back} />, savings: <Savings back={back} />, import: <Import go={go} back={back} />, settings: <Settings back={back} />,
+    forecast: <Forecast back={back} go={go} />, debt: <Debt back={back} />, savings: <Savings back={back} />, import: <Import go={go} back={back} />, settings: <Settings back={back} />,
   }
   const activeTab = SUB.includes(route) ? 'more' : route
   return (
