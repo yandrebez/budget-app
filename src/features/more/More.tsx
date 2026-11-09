@@ -1,6 +1,7 @@
 import { Page } from '@/components/ui'
 
 const ITEMS = [
+  { id: 'forecast', title: 'Forecast', note: 'Will you make it to the end of the month? Can you save?' },
   { id: 'debt', title: 'Debt', note: 'Balances, interest and payoff estimates' },
   { id: 'savings', title: 'Savings', note: 'Pots, targets and progress' },
   { id: 'import', title: 'Import', note: 'Bank statements (CSV, PDF) or an Excel budget' },
