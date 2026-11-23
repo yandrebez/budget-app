@@ -28,12 +28,12 @@ describe('summarise', () => {
     tx('5', '2026-10-05', null, 0, 1000),
     tx('6', '2026-11-01', 'rent', 0, 60000), // other cycle
   ]
-  const s = summarise(cats, groups, txs, '2026-10-01', '2026-10-31')
+  const s = summarise(cats, groups, txs, '2026-10-01', '2026-10-31', '2026-10')
   it('nets refunds and flags overruns', () => {
     const food = s.lines.find((l) => l.category.id === 'food')!
     expect(food.actual).toBe(30000)
     expect(food.over).toBe(false)
-    expect(summarise(cats, groups, [tx('x', '2026-10-02', 'food', 0, 40000)], '2026-10-01', '2026-10-31').lines.find((l) => l.category.id === 'food')!.over).toBe(true)
+    expect(summarise(cats, groups, [tx('x', '2026-10-02', 'food', 0, 40000)], '2026-10-01', '2026-10-31', '2026-10').lines.find((l) => l.category.id === 'food')!.over).toBe(true)
   })
   it('computes left to allocate, ignores transfers and other cycles', () => {
     expect(s.leftToAllocate).toBe(100000 - 90000)

@@ -1,5 +1,8 @@
 import type { Category, Group, Transaction } from '@/types'
 import { db } from '@/db/db'
+import { budgetFor } from '@/domain/budget/budgets'
+import { cycleContaining } from '@/domain/cycles/cycle'
+import { todayISO } from '@/lib/dates'
 import { updateSettings } from '@/db/repo'
 import { newId } from '@/lib/id'
 import { fingerprints } from './parsers/csv'
@@ -20,6 +23,9 @@ const k = (s: string) => s.trim().toLowerCase()
 
 export async function applyPlan(plan: WorkbookPlan, { include, mode, openingAccount }: ApplyOptions): Promise<ApplyResult> {
   const result: ApplyResult = { categories: 0, transactions: 0, skippedDuplicates: 0, debts: 0, pots: 0 }
+  // An existing category's budget changes from this period on, so past months keep the budget they had.
+  const settings = await db.settings.get('main')
+  const periodKey = settings ? cycleContaining(settings, todayISO()).key : todayISO().slice(0, 7)
   await db.transaction('rw', [db.groups, db.categories, db.accounts, db.transactions, db.debts, db.pots, db.rules], async () => {
     if (mode === 'fresh') {
       await Promise.all([db.groups, db.categories, db.accounts, db.transactions, db.debts, db.pots, db.rules].map((t) => t.clear()))
@@ -37,7 +43,13 @@ export async function applyPlan(plan: WorkbookPlan, { include, mode, openingAcco
       const g = await ensureGroup(groupName, kind)
       const existing = cats.get(`${g.id}|${k(name)}`) ?? catByName.get(k(name))
       if (existing) {
-        if (include.budget) await db.categories.update(existing.id, { monthlyBudget: budget, ...(notes ? { notes } : {}) })
+        if (include.budget) {
+          const changed = budget !== budgetFor(existing, periodKey)
+          await db.categories.update(existing.id, {
+            ...(changed ? { budgets: { ...(existing.budgets ?? {}), [periodKey]: budget } } : {}),
+            ...(notes ? { notes } : {}),
+          })
+        }
         return existing
       }
       const c: Category = { id: newId(), name, groupId: g.id, monthlyBudget: budget, ...(notes ? { notes } : {}) }

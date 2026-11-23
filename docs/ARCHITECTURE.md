@@ -37,7 +37,7 @@ UI (features/, components/)  →  hooks/  →  domain/ (pure calculations)
 ## Data model (draft)
 - `Account { id, name, openingBalance }`
 - `Group { id, name, kind: income|expense|debt|savings, order }`
-- `Category { id, name, groupId, notes, monthlyBudget }`
+- `Category { id, name, groupId, notes, monthlyBudget, budgets? }`. `monthlyBudget` is the amount for any period before the first dated change (and for every period on a category that never changed). `budgets` is an optional map of period key (`YYYY-MM`) to the amount that applies from that period until the next entry, resolved by `domain/budget/budgets.ts`. It is a plain optional field, so adding it needed no database schema change and existing data is read exactly as before.
 - `Transaction { id, date, accountId, categoryId, description, moneyIn, moneyOut, importId? }`
 - `Debt { id, name, balance, interestRate, categoryId }`
 - `SavingsPot { id, name, balance, target, categoryId }`

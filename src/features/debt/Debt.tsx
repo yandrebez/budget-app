@@ -4,15 +4,16 @@ import { DecimalInput, Empty, MoneyInput, Page } from '@/components/ui'
 import { CategorySelect } from '@/components/CategorySelect'
 import { db } from '@/db/db'
 import { payoff } from '@/domain/debt/payoff'
+import { budgetFor } from '@/domain/budget/budgets'
 import { useCategories, useDebts, useGroups } from '@/hooks/useBudgetData'
 import { newId } from '@/lib/id'
 
 export function Debt({ back }: { back?: { label: string; onClick: () => void } }) {
-  const { fmt } = useApp()
+  const { fmt, current } = useApp()
   const debts = useDebts(), categories = useCategories(), groups = useGroups()
   const [name, setName] = useState('')
   if (!debts || !categories || !groups) return null
-  const monthly = (catId: string | null) => categories.find((c) => c.id === catId)?.monthlyBudget ?? 0
+  const monthly = (catId: string | null) => { const c = categories.find((x) => x.id === catId); return c ? budgetFor(c, current.key) : 0 }
   const total = debts.reduce((s, d) => s + d.balance, 0)
 
   return (

@@ -6,6 +6,9 @@ import { applyPlan } from '@/features/import/applyWorkbook'
 import { parseWorkbook, type WorkbookPlan } from '@/features/import/parsers/workbook'
 import { db } from '@/db/db'
 import { ensureSeed } from '@/db/repo'
+import { budgetFor } from '@/domain/budget/budgets'
+import { cycleContaining } from '@/domain/cycles/cycle'
+import { todayISO } from '@/lib/dates'
 
 const load = async (): Promise<WorkbookPlan> => {
   const buf = readFileSync('tests/fixtures/sample-budget.xlsx')
@@ -83,6 +86,25 @@ describe('applyPlan', () => {
     await applyPlan(await load(), { include: all, mode: 'merge', openingAccount: 'Savings acc' })
     expect((await db.accounts.filter((a) => a.name === 'Savings acc').first())?.openingBalance).toBe(5000)
     expect((await db.accounts.filter((a) => a.name === 'Main').first())?.openingBalance).toBe(0)
+  })
+
+  it('re-importing with a different budget changes it from this month on, not the past', async () => {
+    const plan = await load()
+    await applyPlan(plan, { include: all, mode: 'merge' })
+    const rent = plan.categories.find((c) => c.name === 'Rent')!
+    const before = rent.monthlyBudget
+    const changed = { ...plan, categories: plan.categories.map((c) => (c.name === 'Rent' ? { ...c, monthlyBudget: before + 50000 } : c)) }
+    await applyPlan(changed, { include: all, mode: 'merge' })
+    const stored = (await db.categories.filter((c) => c.name === 'Rent').first())!
+    const now = cycleContaining((await db.settings.get('main'))!, todayISO()).key
+    expect(stored.monthlyBudget).toBe(before) // the original amount is untouched
+    expect(budgetFor(stored, '2020-01')).toBe(before) // the past keeps what it had
+    expect(budgetFor(stored, now)).toBe(before + 50000)
+    // importing the same thing again changes nothing more
+    await applyPlan(changed, { include: all, mode: 'merge' })
+    expect(Object.keys((await db.categories.get(stored.id))!.budgets ?? {})).toEqual([now])
+    // and a category whose amount did not change gets no history at all
+    expect((await db.categories.filter((c) => c.name === 'Groceries').first())!.budgets).toBeUndefined()
   })
 
   it('respects unticked sections and fresh mode', async () => {

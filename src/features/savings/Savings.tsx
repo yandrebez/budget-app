@@ -4,15 +4,16 @@ import { Empty, MoneyInput, Page, Progress } from '@/components/ui'
 import { CategorySelect } from '@/components/CategorySelect'
 import { db } from '@/db/db'
 import { potProgress } from '@/domain/savings/progress'
+import { budgetFor } from '@/domain/budget/budgets'
 import { useCategories, useGroups, usePots } from '@/hooks/useBudgetData'
 import { newId } from '@/lib/id'
 
 export function Savings({ back }: { back?: { label: string; onClick: () => void } }) {
-  const { fmt } = useApp()
+  const { fmt, current } = useApp()
   const pots = usePots(), categories = useCategories(), groups = useGroups()
   const [name, setName] = useState('')
   if (!pots || !categories || !groups) return null
-  const monthly = (catId: string | null) => categories.find((c) => c.id === catId)?.monthlyBudget ?? 0
+  const monthly = (catId: string | null) => { const c = categories.find((x) => x.id === catId); return c ? budgetFor(c, current.key) : 0 }
 
   return (
     <Page title="Savings" back={back}>

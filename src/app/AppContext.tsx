@@ -12,6 +12,8 @@ interface AppCtx {
   fmtWhole: (cents: number) => string
   /** The cycle currently being viewed. */
   cycle: Cycle
+  /** The period we are in today, whatever is being viewed. */
+  current: Cycle
   isCurrentCycle: boolean
   moveCycle: (by: number) => void
   goCurrent: () => void
@@ -28,6 +30,7 @@ export function AppProvider({ settings, children }: { settings: Settings; childr
       fmt: (c) => formatMoney(c, settings.currency, settings.locale),
       fmtWhole: (c) => new Intl.NumberFormat(settings.locale, { style: 'currency', currency: settings.currency, maximumFractionDigits: 0 }).format(c / 100),
       cycle: shiftCycle(settings, current, offset),
+      current,
       isCurrentCycle: offset === 0,
       moveCycle: (by) => setOffset((o) => o + by),
       goCurrent: () => setOffset(0),

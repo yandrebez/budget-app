@@ -2,9 +2,13 @@ import { useMemo, useState } from 'react'
 import type { GroupKind } from '@/types'
 import { useApp } from '@/app/AppContext'
 import { BudgetRow, GroupBlock, isActive } from '@/components/BudgetViews'
-import { CycleSwitcher, Empty, MoneyInput, Page } from '@/components/ui'
+import { Chips, CycleSwitcher, Empty, MoneyInput, Page } from '@/components/ui'
 import { db } from '@/db/db'
+import { budgetFor, type BudgetScope } from '@/domain/budget/budgets'
 import { summarise } from '@/domain/budget/summary'
+import { shiftCycle } from '@/domain/cycles/cycle'
+import { setCategoryBudget } from '@/db/repo'
+import { monthLong } from '@/lib/format'
 import { useLedger } from '@/hooks/useLedger'
 import { newId } from '@/lib/id'
 
@@ -14,14 +18,18 @@ const KINDS: { value: GroupKind; label: string }[] = [
 ]
 
 export function Budget() {
-  const { fmt, cycle } = useApp()
+  const { fmt, cycle, settings } = useApp()
   const ledger = useLedger()
   const [editing, setEditing] = useState(false)
+  const [scope, setScope] = useState<BudgetScope>('onward')
   const [newCat, setNewCat] = useState<Record<string, string>>({})
   const [newGroup, setNewGroup] = useState({ name: '', kind: 'expense' as GroupKind })
-  const s = useMemo(() => (ledger ? summarise(ledger.categories, ledger.groups, ledger.txs, cycle.start, cycle.end) : null), [ledger, cycle])
+  const s = useMemo(() => (ledger ? summarise(ledger.categories, ledger.groups, ledger.txs, cycle.start, cycle.end, cycle.key) : null), [ledger, cycle])
   if (!ledger || !s) return null
   const { groups, categories } = ledger
+  const month = monthLong(cycle.year, cycle.month, settings.locale)
+  const previous = shiftCycle(settings, cycle, -1)
+  const previousMonth = monthLong(previous.year, previous.month, settings.locale)
 
   const addCategory = async (groupId: string) => {
     const name = (newCat[groupId] ?? '').trim()
@@ -51,7 +59,7 @@ export function Budget() {
 
   return (
     <Page title="Budget" actions={<button className={editing ? 'primary' : ''} onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit budget'}</button>}>
-      {!editing && <CycleSwitcher />}
+      <CycleSwitcher />
       {allocation}
 
       {!editing ? (
@@ -67,7 +75,15 @@ export function Budget() {
             })
       ) : (
         <>
-          <p className="small muted">One monthly budget; the same numbers apply to every period until you change them.</p>
+          <div className="card stack">
+            <Chips caption label="Apply a change to" value={scope} options={[{ value: 'onward', label: `${month} and later` }, { value: 'all', label: 'Every month' }]}
+              onChange={(v) => { if (v === 'all' && !confirm('Every month means past months change too: their budgets are replaced and any earlier history of changes is cleared. Continue?')) return; setScope(v) }} />
+            <p className="xs muted" style={{ margin: 0 }}>
+              {scope === 'onward'
+                ? <>You are changing the budget for <b>{month}</b> and the months after it, until you change it again. Earlier months keep the budget they had.</>
+                : <>You are replacing the budget for <b>every</b> month, past and future. Use this only to correct a mistake.</>}
+            </p>
+          </div>
           {groups.map((g) => {
             const cats = categories.filter((c) => c.groupId === g.id).sort((a, b) => a.name.localeCompare(b.name))
             const budgeted = g.kind !== 'transfer'
@@ -80,9 +96,14 @@ export function Budget() {
                 <div className="card">
                   {cats.length === 0 && <p className="muted small" style={{ margin: 0 }}>No categories yet.</p>}
                   {cats.map((c) => (
-                    <div className="row" key={c.id} style={{ marginBottom: 8 }}>
+                    <div className="row" key={c.id} style={{ marginBottom: 8, alignItems: 'flex-start' }}>
                       <input className="grow" aria-label="Category name" defaultValue={c.name} onBlur={(e) => e.target.value.trim() && db.categories.update(c.id, { name: e.target.value.trim() })} />
-                      {budgeted && <div style={{ width: 120 }}><MoneyInput label={`Monthly budget for ${c.name}`} value={c.monthlyBudget} onChange={(monthlyBudget) => db.categories.update(c.id, { monthlyBudget })} /></div>}
+                      {budgeted && (
+                        <div style={{ width: 130 }}>
+                          <MoneyInput label={`Monthly budget for ${c.name}`} value={budgetFor(c, cycle.key)} onChange={(cents) => setCategoryBudget(c.id, cycle.key, cents, scope)} />
+                          {budgetFor(c, previous.key) !== budgetFor(c, cycle.key) && <span className="xs muted" style={{ display: 'block', marginTop: 2 }}>{previousMonth}: {fmt(budgetFor(c, previous.key))}</span>}
+                        </div>
+                      )}
                       <button className="ghost danger" aria-label={`Delete ${c.name}`} onClick={() => removeCategory(c.id)}>✕</button>
                     </div>
                   ))}
