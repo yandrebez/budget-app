@@ -1,4 +1,5 @@
 import type { Category, Group, GroupKind, ISODate, Transaction } from '@/types'
+import { budgetFor } from './budgets'
 
 export interface CategoryLine {
   category: Category
@@ -34,6 +35,8 @@ export function summarise(
   transactions: Transaction[],
   start: ISODate,
   end: ISODate,
+  /** The period being summarised (`YYYY-MM`), so each month is judged against the budget it had. */
+  periodKey: string,
 ): BudgetSummary {
   const groupById = new Map(groups.map((g) => [g.id, g]))
   const inCycle = transactions.filter((t) => isInRange(t.date, start, end))
@@ -50,7 +53,7 @@ export function summarise(
     const group = groupById.get(category.groupId)
     if (!group || group.kind === 'transfer') continue
     const actual = actualFor(group.kind, byCat.get(category.id) ?? [])
-    const budget = category.monthlyBudget
+    const budget = budgetFor(category, periodKey)
     lines.push({
       category, group, budget, actual,
       left: budget - actual,

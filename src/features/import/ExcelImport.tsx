@@ -157,7 +157,7 @@ export function ExcelImport({ go }: { go: (tab: string) => void }) {
           <h2>What will be imported</h2>
           {plan.warnings.map((w) => <div className="banner" key={w}>{w}</div>)}
           <div className="card stack">
-            {row('budget', 'Groups, categories & monthly budget', `${plan.groups.length} groups · ${plan.categories.filter((c) => c.monthlyBudget > 0).length} with an amount`)}
+            {row('budget', 'Groups, categories & monthly budget', `${plan.groups.length} groups · ${plan.categories.filter((c) => c.monthlyBudget > 0).length} with an amount. Budgets you already have change from this month on; earlier months keep theirs`)}
             {row('accounts', 'Accounts and balances', `${plan.accounts.map((a) => `${a.name} (${KIND_LABEL[a.kind]})`).join(', ')}${[...new Set(plan.accounts.map((a) => a.openingSource).filter(Boolean))].map((x) => `. Opening balances come from the ${x}`).join('')}`)}
             {row('transactions', 'Transactions', plan.transactions.length ? `${dates[0]} → ${dates[dates.length - 1]} · ${fmt(incomeIn)} in · ${fmt(out)} out` : undefined)}
             {row('debts', 'Debts', plan.debts.map((d) => d.name).join(', '))}

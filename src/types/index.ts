@@ -24,7 +24,13 @@ export interface Category {
   id: string
   name: string
   groupId: string
+  /** The budget for any period before the first entry in `budgets` (and for every period if there are none). */
   monthlyBudget: number
+  /**
+   * Changes to the budget over time, keyed by period (`YYYY-MM`, as in a cycle's key). Each applies from that period
+   * until the next change. Absent on categories that have never had a change, which then use `monthlyBudget` throughout.
+   */
+  budgets?: Record<string, number>
   notes?: string
 }
 

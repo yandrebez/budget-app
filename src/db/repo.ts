@@ -1,4 +1,5 @@
 import type { BackupFile, Settings, Transaction } from '@/types'
+import { budgetPatch, type BudgetScope } from '@/domain/budget/budgets'
 import { newId } from '@/lib/id'
 import { db } from './db'
 import { defaultGroups, defaultSettings } from './defaults'
@@ -66,5 +67,18 @@ export async function ensureTransferCategory(): Promise<string> {
     const category = { id: newId(), name: 'Transfer between accounts', groupId: group.id, monthlyBudget: 0 }
     await db.categories.add(category)
     return category.id
+  })
+}
+
+/** Gives a category a new budget amount from a period onward (or for every month), without touching anything else. */
+export async function setCategoryBudget(id: string, periodKey: string, cents: number, scope: BudgetScope): Promise<void> {
+  await db.transaction('rw', db.categories, async () => {
+    const c = await db.categories.get(id)
+    if (!c) return
+    const { budgets, monthlyBudget } = budgetPatch(c, periodKey, cents, scope)
+    const next = { ...c, monthlyBudget }
+    if (budgets) next.budgets = budgets
+    else delete next.budgets
+    await db.categories.put(next)
   })
 }

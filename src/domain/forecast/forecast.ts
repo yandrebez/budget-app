@@ -1,6 +1,7 @@
 import type { Account, Category, Group, ISODate, Transaction } from '@/types'
 import { addDays, daysBetween } from '@/lib/dates'
 import { isSpendingAccount } from '@/domain/balances/balances'
+import { budgetFor } from '@/domain/budget/budgets'
 import { cycleContaining, shiftCycle, type Cycle, type CycleConfig } from '@/domain/cycles/cycle'
 import { detectRecurring, internalTransfers, matches, median } from './recurring'
 
@@ -157,6 +158,8 @@ export function buildForecast(input: ForecastInput): Forecast | null {
   for (const c of categories) kindOf.set(c.id, groupKind.get(c.groupId) ?? 'expense')
   const transferIds = new Set(categories.filter((c) => kindOf.get(c.id) === 'transfer').map((c) => c.id))
   const catById = new Map(categories.map((c) => [c.id, c]))
+  /** This period's budget for a category (it may have changed from earlier months). */
+  const budgetOf = (c: Category | undefined): number => (c ? budgetFor(c, cycle.key) : 0)
 
   /* what is normal: earlier periods with enough data */
   const first = mine.reduce((m, t) => (t.date < m ? t.date : m), today)
@@ -258,16 +261,16 @@ export function buildForecast(input: ForecastInput): Forecast | null {
   const groupName = new Map(groups.map((g) => [g.id, g.name]))
   const budgetLeft = (id: string): number => {
     const c = catById.get(id)
-    if (!c || c.monthlyBudget <= 0 || remaining === 0 || !SPEND_KINDS.has(kindOf.get(id) ?? '')) return 0
+    if (!c || budgetOf(c) <= 0 || remaining === 0 || !SPEND_KINDS.has(kindOf.get(id) ?? '')) return 0
     if (KEPT.test(c.name) || KEPT.test(groupName.get(c.groupId) ?? '')) return 0
-    return Math.max(0, c.monthlyBudget - (spentAll.get(id)?.sum ?? 0) - (billsDue.get(id) ?? 0))
+    return Math.max(0, budgetOf(c) - (spentAll.get(id)?.sum ?? 0) - (billsDue.get(id) ?? 0))
   }
 
   const off = new Set(whatIf.everydayOff ?? [])
   const basis: Basis = whatIf.basis ?? 'cautious'
   const pick = (b: Basis, habit: number, plan: number) => (b === 'habits' ? habit : b === 'budget' ? plan : Math.max(habit, plan))
   const lineIds = new Set<string>([...spentAll.keys(), ...habitLeft.keys()])
-  for (const c of categories) if (SPEND_KINDS.has(kindOf.get(c.id) ?? '') && c.monthlyBudget > 0) lineIds.add(c.id)
+  for (const c of categories) if (SPEND_KINDS.has(kindOf.get(c.id) ?? '') && budgetOf(c) > 0) lineIds.add(c.id)
   const lines: SpendLine[] = [...lineIds].map((id) => {
     const c = catById.get(id)
     const habit = habitLeft.get(id) ?? 0
@@ -275,7 +278,7 @@ export function buildForecast(input: ForecastInput): Forecast | null {
     return {
       categoryId: id === '__none__' ? null : id, name: id === '__none__' ? 'Uncategorised' : c?.name ?? 'Other',
       kind: (id === '__none__' ? 'expense' : kindOf.get(id)) as SpendLine['kind'],
-      budget: c?.monthlyBudget ?? 0, spent: Math.round(spentAll.get(id)?.sum ?? 0), count: spentAll.get(id)?.n ?? 0,
+      budget: budgetOf(c), spent: Math.round(spentAll.get(id)?.sum ?? 0), count: spentAll.get(id)?.n ?? 0,
       habit: Math.round(habit), budgetLeft: Math.round(plan), kept: !!c && (KEPT.test(c.name) || KEPT.test(groupName.get(c.groupId) ?? '')), wouldBe: Math.round(pick(basis, habit, plan)), expected: Math.round(off.has(id) ? 0 : pick(basis, habit, plan)), off: off.has(id),
     }
   }).filter((l) => l.habit > 0 || l.budgetLeft > 0 || l.spent !== 0 || l.budget > 0)
