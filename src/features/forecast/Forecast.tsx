@@ -5,6 +5,8 @@ import { Legend } from '@/components/charts/shared'
 import { Chips, Empty, MoneyInput, Page } from '@/components/ui'
 import type { Basis, SpendLine, WhatIf } from '@/domain/forecast/forecast'
 import { compactNumber, dayMonth } from '@/lib/format'
+import { bonusMoney } from '@/domain/budget/bonus'
+import { useLedger } from '@/hooks/useLedger'
 import { useForecast } from './useForecast'
 import { VERDICT } from './verdict'
 
@@ -30,6 +32,8 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
   const [leftOut, setLeftOut] = useState<string[]>([])
   const whatIf = useMemo<WhatIf>(() => ({ basis, spendMultiplier: mult, oneOff, counted, everydayOff: leftOut }), [basis, mult, oneOff, counted, leftOut])
   const plain = useMemo<WhatIf>(() => ({ basis }), [basis])
+  const ledger = useLedger()
+  const bonusLeft = ledger && ledger.bonusIds.size > 0 && ledger.txs.some((t) => ledger.bonusIds.has(t.bonusId ?? '')) ? bonusMoney(ledger.txs, ledger.bonusIds) : null
   const f = useForecast(whatIf)
   const base = useForecast(plain)
   const d = (iso: string) => dayMonth(iso, settings.locale)
@@ -80,6 +84,7 @@ export function Forecast({ back, go }: { back?: { label: string; onClick: () => 
             Spend what is left of every budget: about <b className="num">{fmt(f.ends.budget)}</b>. Go by your habits alone: about <b className="num">{fmt(f.ends.habits)}</b>.
           </p>
         )}
+        {bonusLeft !== null && <p className="xs muted" style={{ margin: '8px 0 0' }}>Bonus money ({fmt(bonusLeft)} left) is not counted here, so this is about your salary only.</p>}
         {f.staleDays > 0 && f.remaining > 0 && <p className="xs muted" style={{ margin: '8px 0 0' }}>Based on your transactions up to {d(f.asOf)}. The {f.staleDays} day{f.staleDays === 1 ? '' : 's'} since are forecast, so adding them will sharpen this.</p>}
         {f.limitedHistory && <p className="xs warn" style={{ margin: '8px 0 0' }}>Not much history yet, so habits are guessed from this period only. Your budget fills the gap.</p>}
       </div>

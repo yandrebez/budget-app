@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '@/app/AppContext'
 import { balancesByAccount, isSpendingAccount, periodFlow, totalBalance } from '@/domain/balances/balances'
+import { bonusMoney, isBonusTx } from '@/domain/budget/bonus'
 import { todayISO } from '@/lib/dates'
 import { monthLong } from '@/lib/format'
 import { useLedger } from '@/hooks/useLedger'
@@ -22,12 +23,14 @@ export function BalanceBar() {
     return {
       balances, spending, savings: ledger.accounts.filter((a) => !isSpendingAccount(a)),
       overall: totalBalance(spendingBalances),
-      flow: periodFlow(spending, ledger.txs, cycle.start, cycle.end, ledger.transferIds),
+      flow: periodFlow(spending, ledger.txs, cycle.start, cycle.end, ledger.transferIds, (t) => isBonusTx(t, ledger.bonusIds)),
+      bonus: bonusMoney(ledger.txs.filter((t) => spending.some((a) => a.id === t.accountId)), ledger.bonusIds),
+      hasBonus: ledger.txs.some((t) => isBonusTx(t, ledger.bonusIds)),
     }
   }, [ledger, cycle])
 
   if (!ledger || !data || ledger.accounts.length === 0) return null
-  const { flow, overall, balances, spending, savings } = data
+  const { flow, overall, balances, spending, savings, bonus, hasBonus } = data
   const signed = (c: number) => `${c > 0 ? '+' : c < 0 ? '−' : ''}${fmt(Math.abs(c))}`
 
   return (
@@ -50,6 +53,11 @@ export function BalanceBar() {
             <div className="stat"><span className="muted xs">Money in</span><span className="num good">{fmt(flow.moneyIn)}</span></div>
             <div className="stat"><span className="muted xs">Money out</span><span className="num">{fmt(flow.moneyOut)}</span></div>
           </div>
+          {hasBonus && (
+            <div className="row between small" style={{ marginTop: 10 }}>
+              <span className="muted">Of your overall balance, bonus money</span><b className="num">{fmt(bonus)}</b>
+            </div>
+          )}
           <div className="xs muted" style={{ margin: '12px 0 2px' }}>Spending accounts (today)</div>
           {spending.map((a) => (
             <div className="row between small" key={a.id} style={{ padding: '4px 0' }}>

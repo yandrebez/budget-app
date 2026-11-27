@@ -26,7 +26,7 @@ export function Budget() {
   const [scope, setScope] = useState<BudgetScope>('onward')
   const [newCat, setNewCat] = useState<Record<string, string>>({})
   const [newGroup, setNewGroup] = useState({ name: '', kind: 'expense' as GroupKind })
-  const s = useMemo(() => (ledger ? summarise(ledger.categories, ledger.groups, ledger.txs, cycle.start, cycle.end, cycle.key) : null), [ledger, cycle])
+  const s = useMemo(() => (ledger ? summarise(ledger.categories, ledger.groups, ledger.salaryTxs, cycle.start, cycle.end, cycle.key) : null), [ledger, cycle])
   if (!ledger || !s) return null
   const { groups, categories } = ledger
   const month = monthLong(cycle.year, cycle.month, settings.locale)

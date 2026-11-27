@@ -9,7 +9,7 @@ export function useForecast(whatIf?: WhatIf): Forecast | null {
   const { settings } = useApp()
   const ledger = useLedger()
   return useMemo(
-    () => (ledger && ledger.txs.length > 0 ? buildForecast({ cfg: settings, today: todayISO(), accounts: ledger.accounts, txs: ledger.txs, categories: ledger.categories, groups: ledger.groups, whatIf }) : null),
+    () => (ledger && ledger.txs.length > 0 ? buildForecast({ cfg: settings, today: todayISO(), accounts: ledger.accounts, txs: ledger.salaryTxs, categories: ledger.categories, groups: ledger.groups, whatIf }) : null),
     [ledger, settings, whatIf],
   )
 }

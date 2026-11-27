@@ -9,7 +9,7 @@ import { daysBetween, todayISO } from '@/lib/dates'
 export function Dashboard({ go }: { go: (tab: string) => void }) {
   const { cycle, fmt, isCurrentCycle } = useApp()
   const ledger = useLedger()
-  const s = useMemo(() => (ledger ? summarise(ledger.categories, ledger.groups, ledger.txs, cycle.start, cycle.end, cycle.key) : null), [ledger, cycle])
+  const s = useMemo(() => (ledger ? summarise(ledger.categories, ledger.groups, ledger.salaryTxs, cycle.start, cycle.end, cycle.key) : null), [ledger, cycle])
   if (!ledger || !s) return null
 
   const total = daysBetween(cycle.start, cycle.end) + 1

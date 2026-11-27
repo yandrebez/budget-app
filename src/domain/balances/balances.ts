@@ -18,7 +18,7 @@ export const totalBalance = (balances: Map<string, number>): number => [...balan
 export interface PeriodFlow {
   /** Balance across all accounts the moment the period starts. */
   opening: number
-  /** Money in / out excluding transfers between your own accounts. */
+  /** Money in / out excluding transfers between your own accounts and bonus money. */
   moneyIn: number
   moneyOut: number
   net: number
@@ -28,6 +28,8 @@ export interface PeriodFlow {
 
 export function periodFlow(
   accounts: Account[], txs: Transaction[], start: ISODate, end: ISODate, transferCategoryIds: Set<string>,
+  /** Bonus money (arriving or spent) moves the balance but is not part of the month's money in and out. */
+  isBonus: (t: Transaction) => boolean = () => false,
 ): PeriodFlow {
   const known = new Set(accounts.map((a) => a.id))
   let opening = accounts.reduce((s, a) => s + a.openingBalance, 0)
@@ -37,7 +39,7 @@ export function periodFlow(
     if (t.date < start) opening += t.moneyIn - t.moneyOut
     else if (t.date <= end) {
       within += t.moneyIn - t.moneyOut
-      if (!t.categoryId || !transferCategoryIds.has(t.categoryId)) { moneyIn += t.moneyIn; moneyOut += t.moneyOut }
+      if ((!t.categoryId || !transferCategoryIds.has(t.categoryId)) && !isBonus(t)) { moneyIn += t.moneyIn; moneyOut += t.moneyOut }
     }
   }
   return { opening, moneyIn, moneyOut, net: moneyIn - moneyOut, closing: opening + within }
