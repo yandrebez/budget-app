@@ -6,13 +6,14 @@ import { CategorySelect } from '@/components/CategorySelect'
 import { MoveMoney } from './MoveMoney'
 import { db } from '@/db/db'
 import { balancesByAccount } from '@/domain/balances/balances'
+import { isBonusTx, sortBonuses } from '@/domain/budget/bonus'
 import { patternFor } from '@/domain/transactions/categorise'
 import { useLedger } from '@/hooks/useLedger'
 import { newId } from '@/lib/id'
 import { todayISO } from '@/lib/dates'
 import { dayHeading } from '@/lib/format'
 
-type Draft = { id?: string; date: string; accountId: string; categoryId: string; description: string; kind: 'in' | 'out'; amount: number }
+type Draft = { id?: string; date: string; accountId: string; categoryId: string; description: string; kind: 'in' | 'out'; amount: number; bonusId: string }
 const ALL = '__all__'
 const STORE = 'tx-account'
 const KIND_LABEL = { account: 'Account', card: 'Card', savings: 'Savings', cash: 'Cash' } as const
@@ -23,6 +24,7 @@ const recall = () => { try { return localStorage.getItem(STORE) } catch { return
 export function Transactions({ go }: { go: (tab: string) => void }) {
   const { cycle, fmt, settings } = useApp()
   const ledger = useLedger()
+  const plans = sortBonuses(settings.bonuses ?? [])
   const [draft, setDraft] = useState<Draft | null>(null)
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<'cycle' | 'all'>('cycle')
@@ -60,10 +62,10 @@ export function Transactions({ go }: { go: (tab: string) => void }) {
   const periodIn = shown.reduce((s, t) => s + t.moneyIn, 0), periodOut = shown.reduce((s, t) => s + t.moneyOut, 0)
   const balance = active === ALL ? [...balances.values()].reduce((s, v) => s + v, 0) : balances.get(active) ?? 0
 
-  const openNew = () => setDraft({ date: todayISO(), accountId: acct?.id ?? accounts![0]?.id ?? '', categoryId: '', description: '', kind: 'out', amount: 0 })
+  const openNew = () => setDraft({ date: todayISO(), accountId: acct?.id ?? accounts![0]?.id ?? '', categoryId: '', description: '', kind: 'out', amount: 0, bonusId: '' })
   const openEdit = (t: Transaction) => setDraft({
     id: t.id, date: t.date, accountId: t.accountId, categoryId: t.categoryId ?? '', description: t.description,
-    kind: t.moneyIn > 0 ? 'in' : 'out', amount: t.moneyIn || t.moneyOut,
+    kind: t.moneyIn > 0 ? 'in' : 'out', amount: t.moneyIn || t.moneyOut, bonusId: t.bonusId && plans.some((p) => p.id === t.bonusId) ? t.bonusId : '',
   })
 
   async function save() {
@@ -72,8 +74,12 @@ export function Transactions({ go }: { go: (tab: string) => void }) {
       id: draft.id ?? newId(), date: draft.date, accountId: draft.accountId, categoryId: draft.categoryId || null,
       description: draft.description.trim(), moneyIn: draft.kind === 'in' ? draft.amount : 0, moneyOut: draft.kind === 'out' ? draft.amount : 0,
     }
+    // Keep everything else on the record (statement fingerprint, transfer link), and set or clear the bonus tag.
     const prev = draft.id ? await db.transactions.get(draft.id) : undefined
-    await db.transactions.put(prev?.importHash ? { ...row, importHash: prev.importHash } : row)
+    const next: Transaction = { ...(prev ?? {}), ...row }
+    if (draft.bonusId) next.bonusId = draft.bonusId
+    else delete next.bonusId
+    await db.transactions.put(next)
     if (row.categoryId && row.description) {
       const pattern = patternFor(row.description)
       if (pattern && !(await db.rules.where('pattern').equals(pattern).first())) await db.rules.add({ id: newId(), pattern, categoryId: row.categoryId })
@@ -119,7 +125,7 @@ export function Transactions({ go }: { go: (tab: string) => void }) {
                     <button key={t.id} className="item row between" onClick={() => openEdit(t)}>
                       <span className="grow" style={{ minWidth: 0 }}>
                         <span className="title" style={{ display: 'block' }}>{t.description || '(no description)'}</span>
-                        <span className="xs muted">{catName.get(t.categoryId ?? '') ?? <span className="warn">Uncategorised</span>}{active === ALL ? ` · ${accName.get(t.accountId) ?? '?'}` : ''}</span>
+                        <span className="xs muted">{catName.get(t.categoryId ?? '') ?? <span className="warn">Uncategorised</span>}{isBonusTx(t, ledger.bonusIds) && <> · <b>Bonus</b></>}{active === ALL ? ` · ${accName.get(t.accountId) ?? '?'}` : ''}</span>
                       </span>
                       <span className={`amount ${t.moneyIn > 0 ? 'good' : ''}`}>{t.moneyIn > 0 ? '+' : '−'}{fmt(t.moneyIn || t.moneyOut)}</span>
                     </button>
@@ -142,6 +148,18 @@ export function Transactions({ go }: { go: (tab: string) => void }) {
             <label>Description<input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></label>
             <label>Account<select value={draft.accountId} onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}>{accounts!.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
             <label>Category<CategorySelect value={draft.categoryId} onChange={(categoryId) => setDraft({ ...draft, categoryId })} groups={groups} categories={categories} /></label>
+            {plans.length > 0 && (
+              <div className="stack" style={{ background: 'var(--bg)', borderRadius: 12, padding: 12 }}>
+                <label className="row" style={{ flexDirection: 'row', color: 'var(--text)', fontSize: '1rem' }}>
+                  <input type="checkbox" checked={!!draft.bonusId} onChange={(e) => setDraft({ ...draft, bonusId: e.target.checked ? plans[0].id : '' })} />
+                  <span>{draft.kind === 'in' ? 'This is bonus money' : 'Paid from bonus'}</span>
+                </label>
+                {draft.bonusId && plans.length > 1 && (
+                  <select aria-label="Which bonus" value={draft.bonusId} onChange={(e) => setDraft({ ...draft, bonusId: e.target.value })}>{plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                )}
+                <span className="xs muted">{draft.bonusId ? 'Stays out of your salary budget, Stats and forecast, but still moves your account balance.' : 'Turn on to keep it out of your salary budget. It still moves your account balance.'}</span>
+              </div>
+            )}
             <div className="row between">
               {draft.id ? <button className="danger" onClick={async () => {
                 const row = await db.transactions.get(draft.id!)

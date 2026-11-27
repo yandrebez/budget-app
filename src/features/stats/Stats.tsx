@@ -6,13 +6,14 @@ import { RankedBars, type Ranked } from '@/components/charts/RankedBars'
 import { DataTable, Legend, type Series } from '@/components/charts/shared'
 import { Chips, CycleSwitcher, Empty, Page } from '@/components/ui'
 import { assignSlots, breakdown, entityOrder, foldTail, periodStats, seriesByPeriod, UNCATEGORISED, type Metric, type PeriodStats, type Split } from '@/domain/stats/stats'
+import { isBonusTx } from '@/domain/budget/bonus'
 import { useLedger, type Ledger } from '@/hooks/useLedger'
 import { compactNumber, monthShort } from '@/lib/format'
 
 type ChartKind = 'columns' | 'stacked' | 'line' | 'ranked'
-interface Config { view: 'summary' | 'charts'; chart: ChartKind; metric: Metric; split: Split; range: 1 | 3 | 6 | 12; accountIds: string[]; categoryIds: string[]; table: boolean }
+interface Config { withBonus: boolean; view: 'summary' | 'charts'; chart: ChartKind; metric: Metric; split: Split; range: 1 | 3 | 6 | 12; accountIds: string[]; categoryIds: string[]; table: boolean }
 
-const DEFAULT: Config = { view: 'summary', chart: 'columns', metric: 'spending', split: 'none', range: 6, accountIds: [], categoryIds: [], table: false }
+const DEFAULT: Config = { withBonus: false, view: 'summary', chart: 'columns', metric: 'spending', split: 'none', range: 6, accountIds: [], categoryIds: [], table: false }
 const STORE = 'stats-config'
 const METRIC_LABEL: Record<Metric, string> = { spending: 'Spending', income: 'Income', saved: 'Saved', left: 'Left over' }
 const SPLIT_LABEL: Record<Split, string> = { none: 'Total', group: 'Group', category: 'Category', account: 'Account' }
@@ -41,11 +42,18 @@ export function Stats({ back }: { back?: { label: string; onClick: () => void } 
     <Page title="Stats" back={back}>
       <Chips label="View" value={cfg.view} onChange={(view) => set({ view })} options={[{ value: 'summary', label: 'Summary' }, { value: 'charts', label: 'Charts' }]} />
       <CycleSwitcher />
+      {ledger && ledger.txs.some((t) => isBonusTx(t, ledger.bonusIds)) && (
+        <label className="row small" style={{ flexDirection: 'row', color: 'var(--text)', marginBottom: 10 }}>
+          <input type="checkbox" checked={cfg.withBonus} onChange={(e) => set({ withBonus: e.target.checked })} />
+          <span>Include bonus money <span className="muted">(off: your salary side only, like your budget)</span></span>
+        </label>
+      )}
       {!ledger ? null : ledger.txs.length === 0
         ? <Empty>Statistics appear once you have transactions.</Empty>
-        : cfg.view === 'summary'
-          ? <Summary ledger={ledger} />
-          : <Charts ledger={ledger} cfg={cfg} set={set} />}
+        : (() => {
+            const view = cfg.withBonus ? ledger : { ...ledger, txs: ledger.salaryTxs }
+            return cfg.view === 'summary' ? <Summary ledger={view} /> : <Charts ledger={view} cfg={cfg} set={set} />
+          })()}
     </Page>
   )
 }

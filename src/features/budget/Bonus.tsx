@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import type { BonusPart, BonusPlan } from '@/types'
 import { useApp } from '@/app/AppContext'
 import { Empty, MoneyInput, Progress } from '@/components/ui'
+import { db } from '@/db/db'
 import { updateBonuses } from '@/db/repo'
-import { doneTotal, leftToPlan, plannedShare, plannedTotal, planState, sortBonuses } from '@/domain/budget/bonus'
+import { bonusSpending, doneTotal, leftToPlan, partSpent, plannedShare, plannedTotal, planState, sortBonuses, unplannedSpent } from '@/domain/budget/bonus'
 import { shiftCycle } from '@/domain/cycles/cycle'
 import { useLedger, type Ledger } from '@/hooks/useLedger'
 import { newId } from '@/lib/id'
@@ -59,7 +60,7 @@ export function Bonus() {
   return (
     <>
       <p className="small muted" style={{ marginTop: 0 }}>
-        Plan extra money on top of your salary here. It is kept apart from your monthly budget, so "left to allocate", your categories and the forecast are not affected.
+        Plan extra money on top of your salary here. It is kept apart from your monthly budget. When you log a transaction, turn on <b>Paid from bonus</b> (or <b>This is bonus money</b> for the bonus arriving) and it stays out of your salary budget, Stats and forecast, while still moving your account balance.
       </p>
 
       {list.length === 0 && <Empty><p>No bonus planned yet.</p><p className="small">Add one below to decide where it goes before it lands.</p></Empty>}
@@ -86,6 +87,23 @@ function BonusCard({ b, ledger, monthName, months, fmt }: { b: BonusPlan; ledger
   const planned = plannedTotal(b), left = leftToPlan(b), done = doneTotal(b), state = planState(b)
   const catName = (id: string | null) => ledger.categories.find((c) => c.id === id)?.name
 
+  const isIncome = (id: string | null) => !!id && ledger.groups.find((g) => g.id === ledger.categories.find((c) => c.id === id)?.groupId)?.kind === 'income'
+  const sp = bonusSpending(b, ledger.txs, isIncome)
+  const unplanned = unplannedSpent(b, sp)
+
+  async function removePlan() {
+    const tagged = ledger.txs.filter((t) => t.bonusId === b.id).length
+    const msg = tagged > 0
+      ? `Delete the plan "${b.name}"? ${tagged} transaction${tagged === 1 ? ' is' : 's are'} marked as bonus money. They will go back into your salary budget.`
+      : `Delete the plan "${b.name}"?`
+    if (!confirm(msg)) return
+    await db.transaction('rw', db.transactions, db.settings, async () => {
+      await db.transactions.filter((t) => t.bonusId === b.id).modify((t) => { delete t.bonusId })
+      const cur = await db.settings.get('main')
+      if (cur) await db.settings.update('main', { bonuses: (cur.bonuses ?? []).filter((x) => x.id !== b.id) })
+    })
+  }
+
   async function addPart() {
     if (partAmount <= 0) return
     const part: BonusPart = { id: newId(), label: label.trim() || catName(categoryId) || 'Part', amount: partAmount, categoryId, done: false }
@@ -97,7 +115,7 @@ function BonusCard({ b, ledger, monthName, months, fmt }: { b: BonusPlan; ledger
     <div className="card stack">
       <div className="row">
         <input className="grow" aria-label="Bonus name" defaultValue={b.name} onBlur={(e) => { const v = e.target.value.trim(); if (v) void change(b.id, (x) => ({ ...x, name: v })) }} />
-        <button className="ghost danger" aria-label={`Delete ${b.name}`} onClick={() => confirm(`Delete the plan "${b.name}"?`) && updateBonuses((cur) => cur.filter((x) => x.id !== b.id))}>✕</button>
+        <button className="ghost danger" aria-label={`Delete ${b.name}`} onClick={() => removePlan()}>✕</button>
       </div>
       <div className="grid2">
         <label>Amount<MoneyInput label={`Amount of ${b.name}`} value={b.amount} onChange={(amount) => change(b.id, (x) => ({ ...x, amount }))} /></label>
@@ -110,8 +128,17 @@ function BonusCard({ b, ledger, monthName, months, fmt }: { b: BonusPlan; ledger
           {state === 'complete' ? <b className="good">✓ Fully planned</b> : state === 'over' ? <b className="bad">Over by {fmt(-left)}</b> : <span>Left to plan <b className="num warn">{fmt(left)}</b></span>}
         </div>
         <Progress fraction={plannedShare(b)} over={state === 'over'} calm />
-        {planned > 0 && <div className="xs muted" style={{ marginTop: 6 }}>{fmt(done)} of {fmt(planned)} moved or paid · arrives in {monthName(b.period)}</div>}
+        {planned > 0 && <div className="xs muted" style={{ marginTop: 6 }}>{fmt(done)} of {fmt(planned)} ticked off · arrives in {monthName(b.period)}</div>}
       </div>
+
+      {sp.count > 0 && (
+        <div className="stack small" style={{ background: 'var(--bg)', borderRadius: 12, padding: 12 }}>
+          {sp.received > 0 && <div className="row between"><span className="muted">Bonus received</span><b className="num good">{fmt(sp.received)}</b></div>}
+          <div className="row between"><span className="muted">Spent from it so far</span><b className="num">{fmt(sp.spent)}</b></div>
+          <div className="row between"><span className="muted">Left{sp.received > 0 ? '' : ' (of the planned amount)'}</span><b className={`num ${sp.left < 0 ? 'bad' : ''}`}>{fmt(sp.left)}</b></div>
+          {unplanned > 0 && <div className="xs muted">{fmt(unplanned)} was spent in categories that no part below covers.</div>}
+        </div>
+      )}
 
       {b.parts.length > 0 && (
         <div>
@@ -124,6 +151,12 @@ function BonusCard({ b, ledger, monthName, months, fmt }: { b: BonusPlan; ledger
                 <button className="ghost danger" aria-label={`Remove ${p.label}`} onClick={() => change(b.id, (x) => ({ ...x, parts: x.parts.filter((y) => y.id !== p.id) }))}>✕</button>
               </div>
               <CategoryPick ledger={ledger} label={`Budget category for ${p.label}`} value={p.categoryId} onChange={(id) => changePart(b.id, p.id, (x) => ({ ...x, categoryId: id }))} />
+              {partSpent(p, sp) !== null && (
+                <div>
+                  <div className="row between xs muted"><span>Spent from the bonus</span><span className="num">{fmt(partSpent(p, sp) as number)} of {fmt(p.amount)}</span></div>
+                  <Progress fraction={p.amount > 0 ? (partSpent(p, sp) as number) / p.amount : 0} over={(partSpent(p, sp) as number) > p.amount} calm />
+                </div>
+              )}
             </div>
           ))}
         </div>

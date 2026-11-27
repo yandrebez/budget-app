@@ -46,6 +46,11 @@ export interface Transaction {
   importHash?: string
   /** Shared by the two sides of a transfer between your own accounts. */
   transferId?: string
+  /**
+   * The bonus plan this belongs to: bonus money arriving, or a payment made from it. Such a transaction still moves
+   * the account balance, but stays out of the salary budget, Stats and the forecast.
+   */
+  bonusId?: string
 }
 
 export interface Debt {
