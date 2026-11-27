@@ -85,6 +85,29 @@ export interface ColumnMapping {
 export type DateFormat = 'auto' | 'YMD' | 'DMY' | 'MDY'
 export type WeekendRule = 'before' | 'after' | 'none'
 
+/** One slice of a bonus: where some of it is going. */
+export interface BonusPart {
+  id: string
+  label: string
+  /** Cents. */
+  amount: number
+  /** Optional: the budget category it belongs to (e.g. an emergency fund or a loan). */
+  categoryId: string | null
+  /** Ticked off once the money has actually been moved or paid. */
+  done: boolean
+}
+
+/** Extra money on top of salary, planned separately from the monthly budget. */
+export interface BonusPlan {
+  id: string
+  name: string
+  /** Cents expected, after tax. */
+  amount: number
+  /** The period it is expected to arrive in (`YYYY-MM`). */
+  period: string
+  parts: BonusPart[]
+}
+
 export interface Settings {
   id: 'main'
   currency: string
@@ -96,6 +119,8 @@ export interface Settings {
   weekendRule: WeekendRule
   holidays: ISODate[]
   onboarded: boolean
+  /** Bonus plans. Optional, so existing data needs no change. */
+  bonuses?: BonusPlan[]
 }
 
 export interface BackupFile {

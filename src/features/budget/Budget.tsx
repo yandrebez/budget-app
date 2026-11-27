@@ -10,6 +10,7 @@ import { shiftCycle } from '@/domain/cycles/cycle'
 import { setCategoryBudget } from '@/db/repo'
 import { monthLong } from '@/lib/format'
 import { useLedger } from '@/hooks/useLedger'
+import { Bonus } from './Bonus'
 import { newId } from '@/lib/id'
 
 const KINDS: { value: GroupKind; label: string }[] = [
@@ -20,6 +21,7 @@ const KINDS: { value: GroupKind; label: string }[] = [
 export function Budget() {
   const { fmt, cycle, settings } = useApp()
   const ledger = useLedger()
+  const [view, setView] = useState<'monthly' | 'bonus'>('monthly')
   const [editing, setEditing] = useState(false)
   const [scope, setScope] = useState<BudgetScope>('onward')
   const [newCat, setNewCat] = useState<Record<string, string>>({})
@@ -58,7 +60,9 @@ export function Budget() {
   )
 
   return (
-    <Page title="Budget" actions={<button className={editing ? 'primary' : ''} onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit budget'}</button>}>
+    <Page title="Budget" actions={view === 'monthly' ? <button className={editing ? 'primary' : ''} onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit budget'}</button> : undefined}>
+      <Chips label="Budget section" value={view} onChange={setView} options={[{ value: 'monthly', label: 'Monthly budget' }, { value: 'bonus', label: 'Bonus' }]} />
+      {view === 'bonus' ? <Bonus /> : <>
       <CycleSwitcher />
       {allocation}
 
@@ -123,6 +127,7 @@ export function Budget() {
           </div>
         </>
       )}
+      </>}
     </Page>
   )
 }

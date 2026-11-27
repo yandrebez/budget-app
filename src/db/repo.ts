@@ -1,4 +1,4 @@
-import type { BackupFile, Settings, Transaction } from '@/types'
+import type { BackupFile, BonusPlan, Settings, Transaction } from '@/types'
 import { budgetPatch, type BudgetScope } from '@/domain/budget/budgets'
 import { newId } from '@/lib/id'
 import { db } from './db'
@@ -80,5 +80,13 @@ export async function setCategoryBudget(id: string, periodKey: string, cents: nu
     if (budgets) next.budgets = budgets
     else delete next.budgets
     await db.categories.put(next)
+  })
+}
+
+/** Changes the bonus plans in one safe step (read, change, write), so quick edits never overwrite each other. */
+export async function updateBonuses(change: (current: BonusPlan[]) => BonusPlan[]): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    const s = await db.settings.get('main')
+    if (s) await db.settings.update('main', { bonuses: change(s.bonuses ?? []) })
   })
 }
