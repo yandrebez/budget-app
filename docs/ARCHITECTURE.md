@@ -42,7 +42,7 @@ UI (features/, components/)  →  hooks/  →  domain/ (pure calculations)
 - `Debt { id, name, balance, interestRate, categoryId }`
 - `SavingsPot { id, name, balance, target, categoryId }`
 - `PayCycleSettings { dayOfMonth, weekendRule, holidays[] }`
-- `Settings { currency, locale, theme }`
+- `Settings { currency, locale, theme, bonuses? }`. `bonuses` is an optional list of `BonusPlan { id, name, amount, period, parts[] }` (each part: label, amount, optional categoryId, done). It lives on the settings row as a plain optional field, so it needed no database schema change; `domain/budget/bonus.ts` holds the sums and `updateBonuses` in `db/repo.ts` makes each edit a single read-change-write so quick edits never overwrite each other. Bonuses are deliberately separate from the monthly budget and are not read by the budget, Stats or forecast.
 
 ## Statement import flow
 `file → detect format (CSV | PDF) → parse → map columns (saved per layout) → auto-categorise (rules from past descriptions) → review screen → de-duplicate → save`
